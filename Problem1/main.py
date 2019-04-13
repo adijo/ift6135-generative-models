@@ -6,6 +6,9 @@ import torch.nn.functional as nn
 import torch.autograd as autograd
 import torch.optim as optim
 from torch.autograd import Variable
+from ta_code.samplers import distribution3 as gaussian_distribution
+from ta_code.samplers import distribution2
+from ta_code.samplers import distribution1
 
 from Problem1 import networks
 
@@ -14,28 +17,51 @@ from Problem1 import networks
 
 
 def main():
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    model = networks.Discriminator("""input parameters""").to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    pass
 
-    for it in range(100000):
+
+def problem_1(p_distribution, q_distribution):
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    batch_size = 512
+    model_input_size = 100
+    num_epochs = 100
+    D = networks.Discriminator(model_input_size).to(device)
+    optimizer = optim.Adam(D.parameters(), lr=1e-3)
+
+    for i in range(num_epochs):
         # Sample data
-        z = Variable(torch.randn(mb_size, Z_dim))
-        X, _ = mnist.train.next_batch(mb_size)
-        X = Variable(torch.from_numpy(X))
+        X_encodings, Y_encodings = one_hot_encodings(p_distribution(batch_size), q_distribution(batch_size), model_input_size)
+        #X_stats = Variable(torch.from_numpy(average_spans_and_probabilities(X_values)))
+        #Y_stats = Variable(torch.from_numpy(average_spans_and_probabilities(Y_values)))
 
         # Dicriminator forward-loss-backward-update
-        G_sample = G(z)
-        D_real = D(X)
-        D_fake = D(G_sample)
-
-        D_loss_real = nn.binary_cross_entropy(D_real, ones_label)
-        D_loss_fake = nn.binary_cross_entropy(D_fake, zeros_label)
-        D_loss = D_loss_real + D_loss_fake
-
-        D_loss.backward()
+        inputs = X_values, Y_values
+        outputs = D(X_values), D(Y_values)
+        loss = networks.JSDLoss(inputs, outputs)
+        loss.backward()
         optimizer.step()
 
 
+def one_hot_encodings(p_distribution_values, q_distribution_values, bins):
+    p_distribution_values = np.array([value[0] for value in p_distribution_values])
+    q_distribution_values = np.array([value[0] for value in q_distribution_values])
+    joint_values = np.concatenate((p_distribution_values+q_distribution_values))
+    min_value = np.min(joint_values)
+
+    histogram = np.histogram(p_distribution_values+q_distribution_values, bins=bins)
+    bin_size = histogram[1][1] - histogram[1][0]
+
+    X_encodings = get_one_hot(np.array([int((value-min_value)/bin_size) for value in p_distribution_values]), bins)
+    Y_encodings = get_one_hot(np.array([int((value-min_value)/bin_size) for value in q_distribution_values]), bins)
+
+    return X_encodings, Y_encodings
+
+
+def get_one_hot(targets, nb_classes):
+    res = np.eye(nb_classes)[np.array(targets).reshape(-1)]
+    return res.reshape(list(targets.shape)+[nb_classes])
+
+
 if __name__ == '__main__':
-    main()
+    X_encodings, Y_encodings = one_hot_encodings(gaussian_distribution(5), gaussian_distribution(5), 10)
+    k = 4
