@@ -15,12 +15,15 @@ def discriminator(p_distribution, q_distribution, parameters):
     :param p_distribution: The real data distribution
     :param q_distribution: The fake data distribution
     :param parameters: The hyper-parameters to use
-    :return: jensen_shannon_distance, D_loss at the end of training
+    :return: jensen_shannon_distance at the end of training
     """
+    # =====
+    # Setup
+    # =====
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda:0' if use_cuda else 'cpu')
     model = networks.SimpleProbabilityMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=parameters['learning_rate'])
+    optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
 
     one = torch.FloatTensor([1])
     minus_one = one * -1
@@ -28,8 +31,14 @@ def discriminator(p_distribution, q_distribution, parameters):
         one = one.cuda(0)
         minus_one = minus_one.cuda(0)
 
+    # ========
+    # Training
+    # ========
+    ten_percent = parameters['num_iterations']/10
     for i in range(parameters['num_iterations']):
+        # ===========
         # Sample data
+        # ===========
         real_data = torch.from_numpy(p_distribution(0, parameters['batch_size'])).float()
         if use_cuda:
             real_data = real_data.cuda(0)
@@ -40,32 +49,36 @@ def discriminator(p_distribution, q_distribution, parameters):
 
         model.zero_grad()
 
-        # Train using real data
+        # ====================================================================
+        # Feed forward and back propagation
+        # ====================================================================
+        # We want:
+        #   D_real           to approach 1 coming from 0
+        #   D_fake           to approach 0 coming from 1
+        #
+        # The following feed forward and back propagation operations
+        # achieve that goal, therefore maximizing the WGAN objective function:
+        # ====================================================================
         D_real = model(real_data)
-        D_real = D_real.mean()
+        D_real = torch.mean(torch.log(D_real))
         D_real.backward(minus_one)
 
-        # Train using fake data
         D_fake = model(fake_data)
-        D_fake = D_fake.mean()
-        D_fake.backward(one)
+        D_fake = torch.mean(torch.log(1 - D_fake))
+        D_fake.backward(minus_one)
 
-        # Train using gradient penalty
-        gradient_penalty = utils.get_gradient_penalty(model, real_data.data, fake_data.data, use_cuda,
-                                                      parameters['batch_size'], parameters['lambda_constant'])
-        gradient_penalty.backward()
+        # Calculate current distance
+        current_jensen_shannon_distance = (torch.log(torch.FloatTensor([2])) + 0.5*(D_real + D_fake)).data.cpu().numpy()[0]
 
-        D_loss = D_fake - D_real + gradient_penalty
-        jensen_shannon_distance = D_real - D_fake
         optimizer.step()
 
-        if i % 10 == 9:
+        if i % ten_percent == 0 or i+1 == parameters['num_iterations']:
             print(
-                "Iteration {}/{}: Wasserstein Distance: {}, D_loss: {}"
-                .format(i + 1, parameters['num_iterations'], jensen_shannon_distance, D_loss)
+                "Iteration {}/{}: Current Jensen-Shannon distance: : {}"
+                .format(i + 1, parameters['num_iterations'], current_jensen_shannon_distance)
             )
 
-    return jensen_shannon_distance, D_loss
+    return current_jensen_shannon_distance
 
 
 def critic(p_distribution, q_distribution, parameters):
@@ -75,7 +88,7 @@ def critic(p_distribution, q_distribution, parameters):
     :param p_distribution: The real data distribution
     :param q_distribution: The fake data distribution
     :param parameters: The hyper-parameters to use
-    :return: wasserstein_distance, D_loss at the end of training
+    :return: wasserstein_distance at the end of training
     """
     # =====
     # Setup
@@ -83,7 +96,7 @@ def critic(p_distribution, q_distribution, parameters):
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda:0' if use_cuda else 'cpu')
     model = networks.SimpleProbabilityMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
-    optimizer = optim.Adam(model.parameters(), lr=parameters['learning_rate'])
+    optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
 
     one = torch.FloatTensor([1])
     minus_one = one * -1
@@ -138,13 +151,13 @@ def critic(p_distribution, q_distribution, parameters):
 
         optimizer.step()
 
-        if i % ten_percent == 0:
+        if i % ten_percent == 0 or i+1 == parameters['num_iterations']:
             print(
-                "Iteration {}/{}: Wasserstein distance: {}, Critic loss: {}"
+                "Iteration {}/{}: Current Wasserstein distance: {}, Critic loss: {}"
                 .format(i+1, parameters['num_iterations'], current_wasserstein_distance, current_D_loss)
             )
 
-    return current_wasserstein_distance, current_D_loss
+    return current_wasserstein_distance
 
 
 def problem_1_3():
@@ -153,11 +166,11 @@ def problem_1_3():
     """
     parameters = {
         'batch_size': 512,
-        'learning_rate': 1e-3,
-        'num_iterations': 200,
+        'learning_rate': 2.06e-3,
+        'num_iterations': 2000,
         'lambda_constant': 10,
         'input_dimensions': 2,
-        'hidden_layers_size': 128,
+        'hidden_layers_size': 250,
         'phi': -1
     }
 
@@ -167,19 +180,16 @@ def problem_1_3():
 
     for i in range(len(phi_range)):
         parameters['phi'] = phi_range[i]
-        print("\n==============================================")
-        print("TOTAL PROGRESS = {}%".format(100.0*i/len(phi_range)))
-        print("==============================================\n")
 
         print("-> Training discriminator (phi = {})".format(parameters['phi']))
-        jensen_shannon_distance, D_loss = discriminator(
+        jensen_shannon_distance = discriminator(
             p_distribution=samplers.distribution1,
             q_distribution=samplers.distribution1,
             parameters=parameters
         )
 
         print("-> Training critic (phi = {})".format(parameters['phi']))
-        wasserstein_distance, D_loss = critic(
+        wasserstein_distance = critic(
             p_distribution=samplers.distribution1,
             q_distribution=samplers.distribution1,
             parameters=parameters
@@ -187,6 +197,10 @@ def problem_1_3():
 
         jensen_shannon_distances[i] = jensen_shannon_distance
         wasserstein_distances[i] = wasserstein_distance
+
+        print("\n=======================")
+        print("TOTAL PROGRESS = {}%".format(100.0*((i+1)/len(phi_range))))
+        print("=======================\n")
 
     # TODO: Plot the two graphs using (phi_range, jensen_shannon_distances) and (phi_range, wasserstein_distances)
 
