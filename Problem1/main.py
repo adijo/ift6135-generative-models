@@ -17,26 +17,25 @@ def problem_1_3():
 
     for i in range(len(phi_range)):
         phi = phi_range[i]
-        print("==============================================")
+        print("\n==============================================")
         print("TOTAL PROGRESS = {}%".format(100.0*i/len(phi_range)))
-        print("==============================================")
-        print("-> Now discriminator and critic for  phi = {}".format(phi))
-        print("==============================================")
+        print("==============================================\n")
 
-        jensen_shannon_distances, D_loss = discriminator(
+        print("-> Training discriminator (phi = {})".format(phi))
+        jensen_shannon_distance, D_loss = discriminator(
             p_distribution=samplers.distribution1(0, batch_size),
             q_distribution=samplers.distribution1(phi, batch_size),
             batch_size=batch_size
         )
 
-        print("Critic training with phi={}")
+        print("-> Training critic (phi = {})".format(phi))
         wasserstein_distance, D_loss = critic(
             p_distribution=samplers.distribution1(0, batch_size),
             q_distribution=samplers.distribution1(phi, batch_size),
             batch_size=batch_size
         )
 
-        jensen_shannon_distances[i] = jensen_shannon_distances
+        jensen_shannon_distances[i] = jensen_shannon_distance
         wasserstein_distances[i] = wasserstein_distance
 
     # TODO: Plot the two graphs using phi_range as x values and jsd and wsd distances as y values
@@ -94,10 +93,6 @@ def critic(p_distribution, q_distribution, batch_size=512):
                 "Iteration {}/{}: Wasserstein Distance: {}, D_loss: {}"
                 .format(i+1, num_iterations, wasserstein_distance, D_loss)
             )
-
-    print("-> Done training")
-    print("-> Final wasserstein distance: {}".format(wasserstein_distance))
-    print("-> Final loss: {}".format(D_loss))
 
     return wasserstein_distance, D_loss
 
