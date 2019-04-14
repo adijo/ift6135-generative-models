@@ -54,6 +54,8 @@ def get_data_loader(dataset_location, batch_size):
     return trainloader, validloader, testloader
 
 
+# For the basic GAN, we will use the same architecture as the classifier supplied 
+# by the TA. I just basically renamed the 
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
