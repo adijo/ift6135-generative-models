@@ -174,10 +174,13 @@ def problem_1_3():
         'phi': -1
     }
 
-    phi_range = np.arange(-1, 1, 0.1)
+    phi_range = np.arange(-1, 1.1, 0.1)
     jensen_shannon_distances = np.zeros(len(phi_range))
     wasserstein_distances = np.zeros(len(phi_range))
 
+    # ==================================================================
+    # Gathering the distances of p and q for the different values of phi
+    # ==================================================================
     for i in range(len(phi_range)):
         parameters['phi'] = phi_range[i]
 
@@ -202,7 +205,20 @@ def problem_1_3():
         print("TOTAL PROGRESS = {}%".format(100.0*((i+1)/len(phi_range))))
         print("=======================\n")
 
-    # TODO: Plot the two graphs using (phi_range, jensen_shannon_distances) and (phi_range, wasserstein_distances)
+    # ====================
+    # Plotting the results
+    # ====================
+    ax = utils.new_figure("Jensen-Shannon distance")
+    ax.set_xlabel("Phi")
+    ax.set_ylabel("Distance")
+    ax.plot(phi_range, jensen_shannon_distances, "o")
+    plt.show()
+
+    ax = utils.new_figure("Wasserstein distance")
+    ax.set_xlabel("Phi")
+    ax.set_ylabel("Distance")
+    ax.plot(phi_range, wasserstein_distances, "o")
+    plt.show()
 
 
 def problem_1_4():

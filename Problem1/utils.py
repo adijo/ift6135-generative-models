@@ -1,5 +1,6 @@
 import torch
 from torch import autograd
+import matplotlib.pyplot as plt
 
 
 def get_gradient_penalty(model, real_data, fake_data, use_cuda, batch_size, lambda_constant):
@@ -25,3 +26,10 @@ def get_gradient_penalty(model, real_data, fake_data, use_cuda, batch_size, lamb
     )[0]
 
     return lambda_constant * ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+
+
+def new_figure(figure_title):
+    fig, ax = plt.subplots()
+    ax.set_title(figure_title)
+    return ax
+
