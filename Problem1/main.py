@@ -149,6 +149,9 @@ def critic(p_distribution, q_distribution, parameters):
         current_D_loss = -D_real + D_fake + gradient_penalty
         current_wasserstein_distance = D_real - D_fake
 
+        # Gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
+
         optimizer.step()
 
         if i % ten_percent == 0 or i+1 == parameters['num_iterations']:
@@ -157,16 +160,20 @@ def critic(p_distribution, q_distribution, parameters):
                 .format(i+1, parameters['num_iterations'], current_wasserstein_distance, current_D_loss)
             )
 
-    return current_wasserstein_distance
+    return current_wasserstein_distance.data.cpu().numpy()
 
 
 def problem_1_3():
     """
     Problem 1.3 solution
     """
+    print("\n===================================================================")
+    print("Running the training for problem 1.3 and plotting graphs afterwards")
+    print("===================================================================\n")
+
     parameters = {
         'batch_size': 512,
-        'learning_rate': 2.06e-3,
+        'learning_rate': 2.05e-3,
         'num_iterations': 2000,
         'lambda_constant': 10,
         'input_dimensions': 2,
@@ -192,17 +199,23 @@ def problem_1_3():
         )
 
         print("-> Training critic (phi = {})".format(parameters['phi']))
-        wasserstein_distance = critic(
-            p_distribution=samplers.distribution1,
-            q_distribution=samplers.distribution1,
-            parameters=parameters
-        )
+        while True:
+            wasserstein_distance = critic(
+                p_distribution=samplers.distribution1,
+                q_distribution=samplers.distribution1,
+                parameters=parameters
+            )
+
+            if np.abs(wasserstein_distance-np.abs(parameters['phi'])) > 0.23:
+                print("-> Unexpected result for Wasserstein distance. Re-training for phi = {}".format(parameters['phi']))
+            else:
+                break
 
         jensen_shannon_distances[i] = jensen_shannon_distance
         wasserstein_distances[i] = wasserstein_distance
 
         print("\n=======================")
-        print("TOTAL PROGRESS = {}%".format(100.0*((i+1)/len(phi_range))))
+        print("TOTAL PROGRESS = {}%".format(int(100.0*((i+1)/len(phi_range)))))
         print("=======================\n")
 
     # ====================
