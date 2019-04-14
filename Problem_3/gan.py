@@ -291,7 +291,7 @@ def train_gan():
     params_discriminator = discriminator.parameters()
     optimizer_discriminator = Adam(params_discriminator,lr=0.0002)
 
-    params_generator = discriminator.parameters()
+    params_generator = generator.parameters()
     optimizer_generator = Adam(params_generator, lr=0.0001)
 
     bceloss = nn.BCELoss() #Just for unit testing the discriminator, we will need to change the loss function
@@ -368,6 +368,94 @@ def train_gan():
 
     discriminator = torch.load("discriminator.pt")
     print("Test accuracy:", evaluate(discriminator, test))
+
+
+#Will will train a WGAN instead. Should be easier to make it work.
+def train_wgan():
+    train, valid, test = get_data_loader("svhn", batch_size)
+    critic = Critic()
+    generator = Generator()
+    params_critic = critic.parameters()
+    optimizer_critic = Adam(params_discriminator,lr=0.0002)
+
+    params_generator = generator.parameters()
+    optimizer_generator = Adam(params_generator, lr=0.0001)
+
+    bceloss = nn.BCELoss() #Just for unit testing the discriminator, we will need to change the loss function
+    best_acc = 0.
+    cuda = torch.cuda.is_available()
+    if cuda:
+        discriminator = discriminator.cuda()
+        generator=generator.cuda()
+
+    logfile = open("log.txt","w")
+    print(optimizer_generator, file=logfile)
+    print(optimizer_discriminator, file=logfile)
+    logfile.flush()
+    
+    for epoch in range(50):
+        discriminator.train()
+        #For training, we will borrow ideas heavily from this paper.
+        #https://arxiv.org/pdf/1706.08500.pdf
+
+        #We will use:
+        # The two time-scale update rule for GANs (One LR for the discriminator, and another one for the generator)
+        #                                         (The discriminator must be faster than the )
+        # Adam as the optimizer
+        # Use Wasserstein GAN loss function
+        #
+
+        for i, (x, y) in enumerate(train):
+            #Player 1: The discriminator plays the game
+            #where it wants to tell a generated sample appart from a true sample.
+            time.sleep(0.1)
+            discriminator.zero_grad()
+            m = nn.Sigmoid()
+            z = torch.FloatTensor(batch_size,100,1,1).uniform_(-1, 1)
+            
+            if cuda:
+                x_true = x.cuda()
+                z=z.cuda()
+            generated_picture = generator(z)
+            out_true = m(discriminator(x_true))
+            out_fake = m(discriminator(generated_picture))
+
+            out = torch.cat((out_fake,out_true),0)
+
+            always_true = torch.ones(out_true.shape).cuda() #Just for unit testing the discriminator
+            always_fake = torch.zeros(out_fake.shape).cuda() #Just for unit testing the discriminator
+            always_true_fake = torch.ones(out_fake.shape).cuda() #Just for unit testing the discriminator
+
+            target = torch.cat((always_fake,always_true),0)
+            
+            loss_discriminator = bceloss(out, target) 
+            loss_discriminator.backward(retain_graph=True)
+            optimizer_discriminator.step()
+            
+            D_real = out_true.mean().item()
+            D_fake1 = out_fake.mean().item()
+            
+            generator.zero_grad()
+            
+            generated_picture = generator(z)
+            out_fake2 = m(discriminator(generated_picture))
+            D_fake2 = out_fake2.mean().item()
+
+            loss_generator = bceloss(out_fake, always_true_fake) #If the generator is not fooling the discriminator, it's bad
+            loss_generator.backward()
+
+            print("Epoch: %2d, Iteration: %3d, D_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f " 
+                %(epoch, i, loss_discriminator.item(), loss_generator.item(), D_real, D_fake1, D_fake2)) 
+
+            print("Epoch: %2d, Iteration: %3d, D_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f " 
+                %(epoch, i, loss_discriminator.item(), loss_generator.item(), D_real, D_fake1, D_fake2), file=logfile) 
+            optimizer_generator.step()
+        print ("Epoch done")
+        scipy.misc.imsave('out' + str(epoch) +'.png',generated_picture[0].detach().cpu().numpy().swapaxes(0,2))
+
+    discriminator = torch.load("discriminator.pt")
+    print("Test accuracy:", evaluate(discriminator, test))
+
 
 if __name__ == "__main__":
     train_gan()
