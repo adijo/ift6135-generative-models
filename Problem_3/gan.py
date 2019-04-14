@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 #TODO: Implement a GAN
+import time
 import torch
 import torchvision.datasets
 import torchvision.transforms as transforms
@@ -67,6 +68,8 @@ def get_data_loader(dataset_location, batch_size):
 # •Use ReLU activation in generator for all layers except for the output, which uses Tanh.
 # •Use LeakyReLU activation in the discriminator for all layers.
 
+
+
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
@@ -110,6 +113,69 @@ class Discriminator(nn.Module):
             nn.Dropout(0.5),
             nn.Linear(512, 1), #We just want to know if the image is fake or not.
         )
+
+        init_weights(self)
+
+        # for p in self.parameters():
+        #     if p.dim() > 1:
+        #         nn.init.xavier_uniform_(p)
+
+    def forward(self, x):
+        x  = self.mlp(self.extract_features(x))
+        return x 
+
+    def extract_features(self, x):
+        return self.conv_stack(x)[:, :, 0, 0]
+
+
+# This will be used to implement a WGAN. GAN is too hard to train!
+
+class Critic(nn.Module):
+    def __init__(self):
+        super(Critic, self).__init__()
+        self.conv_stack = nn.Sequential(
+            nn.Conv2d(3, 8, 3, padding=1),
+            nn.BatchNorm2d(8),
+            nn.LeakyReLU(0.2),
+            
+            nn.Dropout2d(p=0.1),
+            nn.Conv2d(8, 16, 3, padding=1, stride=2),
+            nn.BatchNorm2d(16),
+            nn.LeakyReLU(0.2),
+            
+
+            nn.Conv2d(16, 16, 3, padding=1),
+            nn.BatchNorm2d(16),
+            nn.LeakyReLU(0.2),
+            
+
+            nn.Dropout2d(p=0.1),
+            nn.Conv2d(16, 32, 3, padding=1, stride=2),
+            nn.BatchNorm2d(32),
+            nn.LeakyReLU(0.2),
+            
+
+            nn.Conv2d(32, 64, 3, padding=1),
+            nn.BatchNorm2d(64),
+            nn.LeakyReLU(0.2),
+            
+
+            nn.Dropout2d(p=0.1),
+            nn.Conv2d(64, 128, 3, padding=1, stride=2),
+            nn.BatchNorm2d(128),
+            nn.LeakyReLU(0.2), #As in the paper https://arxiv.org/pdf/1511.06434.pdf
+
+            nn.Conv2d(128, 512, 2),
+        )
+
+        self.mlp = nn.Sequential(
+            nn.LeakyReLU(),
+            nn.Dropout(0.5),
+            nn.Linear(512, 1), #We just want to know if the image is fake or not.
+        )
+
+        init_weights(self)
+
         # for p in self.parameters():
         #     if p.dim() > 1:
         #         nn.init.xavier_uniform_(p)
@@ -157,28 +223,7 @@ class Generator(nn.Module):
         self.conv4 =    nn.ConvTranspose2d(256, 3, 4, stride=2, padding=1)
         self.tanh4 =    nn.Tanh()
 
-        #self.conv_transpose_stack = nn.Sequential(
-
-            #Input will be a 100 random uniform distribution
-            #Step 1 - Projet and reshape
-            #nn.ConvTranspose2d(100,1024,4),
-            #nn.BatchNorm2d(1024),
-            #nn.ReLU(),
-
-            #Step 2, project to 8x8 x 512
-            #nn.ConvTranspose2d(1024,512,8),
-            #nn.ReLU(),
-            #nn.BatchNorm2d(512),
-
-            #Step 3, stride of 2 to projet 8x8 to 16x16
-            #nn.Conv2d(512, 256, 5, stride=2),
-            #nn.ReLU(),
-            #nn.BatchNorm2d(256),
-
-            #Step 4, stride of 2 to projet 16x16 to 32x32
-            #nn.Conv2d(256, 3, 5, stride=2),
-            #nn.Tanh(),
-        #)
+        init_weights(self)
 
     def forward(self, x):
         #x  = self.conv_transpose_stack(x) [:, :, 0, 0]
@@ -200,6 +245,14 @@ class Generator(nn.Module):
         return x 
 
 
+#https://arxiv.org/pdf/1511.06434.pdf
+# All weights were initialized from a zero-centered Normal distributionwith standard deviation 0.02
+def init_weights(m):
+    if type(m) == nn.Linear:
+        torch.nn.init.normal_(m.weight, mean=0, std=0.02)
+        m.bias.data.fill_(0)
+
+
 def evaluate(classify, dataset):
     with torch.no_grad():
         classify.eval()
@@ -217,44 +270,104 @@ def evaluate(classify, dataset):
     acc = correct / float(total)
     return acc
 
+batch_size=64
 
-if __name__ == "__main__":
-    train, valid, test = get_data_loader("svhn", 32)
+def wgan_critic_loss(critic, real_pictures, fake_pictures):
+    out_real = critic(real_pictures)
+    out_fake = critic(fake_pictures)
+    return torch.mean(out_fake-out_real)
+
+def wgan_generator_loss(critic, real_pictures, fake_pictures):
+    out_real = critic(real_pictures)
+    out_fake = critic(fake_pictures)
+    return torch.mean(out_fake-out_real)
+
+import scipy
+
+def train_gan():
+    train, valid, test = get_data_loader("svhn", batch_size)
     discriminator = Discriminator()
     generator = Generator()
-    params = discriminator.parameters()
-    optimizer = Adam(params)
+    params_discriminator = discriminator.parameters()
+    optimizer_discriminator = Adam(params_discriminator,lr=0.0002)
+
+    params_generator = discriminator.parameters()
+    optimizer_generator = Adam(params_generator, lr=0.0001)
+
     bceloss = nn.BCELoss() #Just for unit testing the discriminator, we will need to change the loss function
     best_acc = 0.
     cuda = torch.cuda.is_available()
     if cuda:
         discriminator = discriminator.cuda()
+        generator=generator.cuda()
 
-    for _ in range(50):
+    logfile = open("log.txt","w")
+    print(optimizer_generator, file=logfile)
+    print(optimizer_discriminator, file=logfile)
+    logfile.flush()
+    
+    for epoch in range(50):
         discriminator.train()
-        #Generator unit test
-        z = torch.FloatTensor(32,100,1,1).uniform_(-1, 1)
-        generated_picture = generator(z)
+        #For training, we will borrow ideas heavily from this paper.
+        #https://arxiv.org/pdf/1706.08500.pdf
+
+        #We will use:
+        # The two time-scale update rule for GANs (One LR for the discriminator, and another one for the generator)
+        #                                         (The discriminator must be faster than the )
+        # Adam as the optimizer
+        # Use Wasserstein GAN loss function
+        #
 
         for i, (x, y) in enumerate(train):
-            if cuda:
-                x = x.cuda()
-                y = y.cuda()
-            out = discriminator(x)
-            always_true = torch.ones(out.shape).cuda() #Just for unit testing the discriminator
+            #Player 1: The discriminator plays the game
+            #where it wants to tell a generated sample appart from a true sample.
+            time.sleep(0.1)
+            discriminator.zero_grad()
             m = nn.Sigmoid()
-            loss = bceloss(m(out), always_true)
-            loss.backward()
-            optimizer.step()
-            optimizer.zero_grad()
-            if (i + 1) % 200 == 0:
-                print(loss.item())
-        acc = evaluate(discriminator, valid)
-        print("Validation acc:", acc,)
+            z = torch.FloatTensor(batch_size,100,1,1).uniform_(-1, 1)
+            
+            if cuda:
+                x_true = x.cuda()
+                z=z.cuda()
+            generated_picture = generator(z)
+            out_true = m(discriminator(x_true))
+            out_fake = m(discriminator(generated_picture))
 
-        if acc > best_acc:
-            best_acc = acc
-            torch.save(discriminator, "discriminator.pt")
-            print("Saved.")
+            out = torch.cat((out_fake,out_true),0)
+
+            always_true = torch.ones(out_true.shape).cuda() #Just for unit testing the discriminator
+            always_fake = torch.zeros(out_fake.shape).cuda() #Just for unit testing the discriminator
+            always_true_fake = torch.ones(out_fake.shape).cuda() #Just for unit testing the discriminator
+
+            target = torch.cat((always_fake,always_true),0)
+            
+            loss_discriminator = bceloss(out, target) 
+            loss_discriminator.backward(retain_graph=True)
+            optimizer_discriminator.step()
+            
+            D_real = out_true.mean().item()
+            D_fake1 = out_fake.mean().item()
+            
+            generator.zero_grad()
+            
+            generated_picture = generator(z)
+            out_fake2 = m(discriminator(generated_picture))
+            D_fake2 = out_fake2.mean().item()
+
+            loss_generator = bceloss(out_fake, always_true_fake) #If the generator is not fooling the discriminator, it's bad
+            loss_generator.backward()
+
+            print("Epoch: %2d, Iteration: %3d, D_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f " 
+                %(epoch, i, loss_discriminator.item(), loss_generator.item(), D_real, D_fake1, D_fake2)) 
+
+            print("Epoch: %2d, Iteration: %3d, D_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f " 
+                %(epoch, i, loss_discriminator.item(), loss_generator.item(), D_real, D_fake1, D_fake2), file=logfile) 
+            optimizer_generator.step()
+        print ("Epoch done")
+        scipy.misc.imsave('out' + str(epoch) +'.png',generated_picture[0].detach().cpu().numpy().swapaxes(0,2))
+
     discriminator = torch.load("discriminator.pt")
     print("Test accuracy:", evaluate(discriminator, test))
+
+if __name__ == "__main__":
+    train_gan()
