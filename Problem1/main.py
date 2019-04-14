@@ -1,41 +1,106 @@
-import numpy as np
-import scipy.stats
-import scipy as sp
 import torch
-import torch.nn.functional as nn
-import torch.autograd as autograd
 import torch.optim as optim
-from torch.autograd import Variable
+import Problem1.utils as utils
+import numpy as np
+import matplotlib.pyplot as plt
 
 from Problem1 import networks
-
-# https://wiseodd.github.io/techblog/2017/01/20/gan-pytorch/
-# https://wiseodd.github.io/techblog/2017/02/04/wasserstein-gan/
+from ta_code import samplers
 
 
-def main():
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    model = networks.Discriminator("""input parameters""").to(device)
+def problem_1_3():
+    batch_size = 512
+    phi_range = np.arange(-1, 1, 0.1)
+
+    jensen_shannon_distances = np.zeros(len(phi_range))
+    wasserstein_distances = np.zeros(len(phi_range))
+
+    for i in range(len(phi_range)):
+        phi = phi_range[i]
+        print("==============================================")
+        print("TOTAL PROGRESS = {}%".format(100.0*i/len(phi_range)))
+        print("==============================================")
+        print("-> Now discriminator and critic for  phi = {}".format(phi))
+        print("==============================================")
+
+        jensen_shannon_distances, D_loss = discriminator(
+            p_distribution=samplers.distribution1(0, batch_size),
+            q_distribution=samplers.distribution1(phi, batch_size),
+            batch_size=batch_size
+        )
+
+        print("Critic training with phi={}")
+        wasserstein_distance, D_loss = critic(
+            p_distribution=samplers.distribution1(0, batch_size),
+            q_distribution=samplers.distribution1(phi, batch_size),
+            batch_size=batch_size
+        )
+
+        jensen_shannon_distances[i] = jensen_shannon_distances
+        wasserstein_distances[i] = wasserstein_distance
+
+    # TODO: Plot the two graphs using phi_range as x values and jsd and wsd distances as y values
+
+
+def discriminator(p_distribution, q_distribution, batch_size=512):
+    # TODO: Implement
+    return 0, 0
+
+
+def critic(p_distribution, q_distribution, batch_size=512):
+    """
+    Problem 1 solution
+    """
+    use_cuda = torch.cuda.is_available()
+    device = torch.device('cuda:0' if use_cuda else 'cpu')
+    num_iterations = 100
+    lambda_constant = 10
+    input_dimensions = 2
+    model = networks.SimpleMLP(input_dimensions).to(device)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
 
-    for it in range(100000):
+    for i in range(num_iterations):
         # Sample data
-        z = Variable(torch.randn(mb_size, Z_dim))
-        X, _ = mnist.train.next_batch(mb_size)
-        X = Variable(torch.from_numpy(X))
+        real_data = torch.from_numpy(p_distribution).float()
+        if use_cuda:
+            real_data = real_data.cuda(0)
 
-        # Dicriminator forward-loss-backward-update
-        G_sample = G(z)
-        D_real = D(X)
-        D_fake = D(G_sample)
+        fake_data = torch.from_numpy(q_distribution).float()
+        if use_cuda:
+            fake_data = fake_data.cuda(0)
 
-        D_loss_real = nn.binary_cross_entropy(D_real, ones_label)
-        D_loss_fake = nn.binary_cross_entropy(D_fake, zeros_label)
-        D_loss = D_loss_real + D_loss_fake
+        model.zero_grad()
 
-        D_loss.backward()
+        # Train using real data
+        D_real = model(real_data)
+        D_real = -D_real.mean()
+        D_real.backward()
+
+        # Train using fake data
+        D_fake = model(fake_data)
+        D_fake = D_fake.mean()
+        D_fake.backward()
+
+        # Train using gradient penalty
+        gradient_penalty = utils.get_gradient_penalty(model, real_data.data, fake_data.data, use_cuda, batch_size, lambda_constant)
+        gradient_penalty.backward()
+
+        D_loss = D_fake - D_real + gradient_penalty
+        wasserstein_distance = D_real - D_fake
         optimizer.step()
+
+        if i % 10 == 9:
+            print(
+                "Iteration {}/{}: Wasserstein Distance: {}, D_loss: {}"
+                .format(i+1, num_iterations, wasserstein_distance, D_loss)
+            )
+
+    print("-> Done training")
+    print("-> Final wasserstein distance: {}".format(wasserstein_distance))
+    print("-> Final loss: {}".format(D_loss))
+
+    return wasserstein_distance, D_loss
 
 
 if __name__ == '__main__':
-    main()
+    problem_1_3()
