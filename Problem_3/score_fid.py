@@ -88,25 +88,19 @@ def calculate_fid_score(sample_feature_iterator,
     size = 0
     samples=[]
     for sample in sample_feature_iterator:
-        #if number_of_samples >= 1000: break
         if (number_of_samples==0): 
             size=sample.size
             samples=np.empty((0,size))
         samples=np.append(samples,[sample], axis=0)
         number_of_samples=number_of_samples+1
     
-    print("samples.shape",samples.shape)
-
     test_items=[]
     for test_item in testset_feature_iterator:
-        #if number_of_test_samples >= 1000: break
         if (number_of_test_samples==0): 
             size=sample.size
             test_items=np.empty((0,size))
         test_items=np.append(test_items, [test_item], axis=0)
-        
         number_of_test_samples=number_of_test_samples+1
-    print (number_of_samples, number_of_test_samples, size)
 
     #Then we work on the packed values. 
     mean_samples = np.mean(samples,axis=0)
@@ -114,37 +108,14 @@ def calculate_fid_score(sample_feature_iterator,
 
     mean_test = np.mean(test_items,axis=0)
     cov_test = np.cov(test_items, rowvar=False)
-    #print(mean_samples)
-    #print(mean_test)
-    np.savetxt("mean_samples.txt", mean_samples)
-    np.savetxt("cov_samples.txt", cov_samples)
-    np.savetxt("mean_test.txt", mean_test)
-    np.savetxt("cov_test.txt", cov_test)
-
-    print(mean_samples.shape)
-    print(cov_samples.shape)
-    print(mean_test.shape)
-    print(cov_test.shape)
-
     #First term of the RHS of the equation
     delta_mean = mean_test-mean_samples
     norm = np.linalg.norm(delta_mean,2)
-    print(norm)
     squared_norm = np.square(norm)
 
     #Second term of the RHS of the equation
-    #print(cov_test)
-    #print(cov_samples)
     cov_part = np.trace(cov_test + cov_samples - 2*sp.linalg.sqrtm(np.matmul(cov_test,cov_samples)))
-    #cov_part = np.trace(cov_test + cov_samples - 2*sp.linalg.sqrtm(np.dot(cov_test,cov_samples)))
-    #print (cov_part)
-    print("squared_norm", squared_norm)
-    print ("cov_part", cov_part)
-
     return cov_part + squared_norm
-
-    return 1
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -174,9 +145,13 @@ if __name__ == "__main__":
     test_loader = get_test_loader(PROCESS_BATCH_SIZE)
     test_f = extract_features(classifier, test_loader)
 
+    test_loader_ut1 = get_test_loader(PROCESS_BATCH_SIZE)
+    test_f_ut1 = extract_features(classifier, test_loader)
 
-    fid_score_unit_test = calculate_fid_score(test_f, test_f)
+    test_loader_ut2 = get_test_loader(PROCESS_BATCH_SIZE)
+    test_f_ut2 = extract_features(classifier, test_loader)
 
+    fid_score_unit_test = calculate_fid_score(test_f_ut1, test_f_ut2)
     print("FID score unit test", fid_score_unit_test)
     fid_score = calculate_fid_score(sample_f, test_f)
     print("FID score:", fid_score)
