@@ -1,7 +1,6 @@
 from torch import optim
 from torch.autograd import Variable
 import torch
-
 from Problem3.vae.svhn import get_data_loader
 from Problem3.vae.vae import VAE, loss_fn
 
@@ -21,16 +20,16 @@ def train(model, optimizer, train_loader, loss_function, epoch, use_cuda=True, l
         # push whole batch of data through VAE.forward() to get recon_loss
         recon_batch, mu, log_var = model(data)
         # calculate scalar loss
-        loss = loss_function(recon_batch, data, mu, log_var)
+        loss, mse, kld = loss_function(recon_batch, data, mu, log_var)
 
         loss.backward()
-        train_loss += loss.data[0]
+        train_loss += loss.item()
         optimizer.step()
         if batch_idx % log_interval == 0:
             print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
                 epoch, batch_idx * len(data), len(train_loader.dataset),
                 100. * batch_idx / len(train_loader),
-                loss.data[0] / len(data)))
+                loss.item() / len(data)))
 
     print('====> Epoch: {} Average loss: {:.4f}'.format(
           epoch, train_loss / len(train_loader.dataset)))
@@ -38,7 +37,7 @@ def train(model, optimizer, train_loader, loss_function, epoch, use_cuda=True, l
 
 Z_DIMS = 100
 NUM_EPOCHS = 1
-BATCH_SIZE=64
+BATCH_SIZE = 64
 use_cuda = torch.cuda.is_available()
 model = VAE()
 if use_cuda:
