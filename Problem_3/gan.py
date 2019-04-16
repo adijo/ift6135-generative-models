@@ -69,7 +69,6 @@ def get_data_loader(dataset_location, batch_size):
 # •Use LeakyReLU activation in the discriminator for all layers.
 
 
-
 class Discriminator(nn.Module):
     def __init__(self):
         super(Discriminator, self).__init__()
@@ -127,66 +126,6 @@ class Discriminator(nn.Module):
     def extract_features(self, x):
         return self.conv_stack(x)[:, :, 0, 0]
 
-
-# This will be used to implement a WGAN. GAN is too hard to train!
-
-class Critic(nn.Module):
-    def __init__(self):
-        super(Critic, self).__init__()
-        self.conv_stack = nn.Sequential(
-            nn.Conv2d(3, 8, 3, padding=1),
-            #nn.BatchNorm2d(8),
-            nn.LeakyReLU(0.2),
-            
-            nn.Dropout2d(p=0.1),
-            nn.Conv2d(8, 16, 3, padding=1, stride=2),
-            #nn.BatchNorm2d(16),
-            nn.LeakyReLU(0.2),
-            
-
-            nn.Conv2d(16, 16, 3, padding=1),
-            #nn.BatchNorm2d(16),
-            nn.LeakyReLU(0.2),
-            
-
-            nn.Dropout2d(p=0.1),
-            nn.Conv2d(16, 32, 3, padding=1, stride=2),
-            #nn.BatchNorm2d(32),
-            nn.LeakyReLU(0.2),
-            
-
-            nn.Conv2d(32, 64, 3, padding=1),
-            #nn.BatchNorm2d(64),
-            nn.LeakyReLU(0.2),
-            
-
-            nn.Dropout2d(p=0.1),
-            nn.Conv2d(64, 128, 3, padding=1, stride=2),
-            #nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2), #As in the paper https://arxiv.org/pdf/1511.06434.pdf
-
-            nn.Conv2d(128, 512, 2),
-        )
-
-        self.mlp = nn.Sequential(
-            nn.LeakyReLU(0.2),
-            #nn.Dropout(0.5),
-            nn.Linear(512, 1), #We just want to know if the image is fake or not.
-        )
-
-        init_weights(self)
-
-        # for p in self.parameters():
-        #     if p.dim() > 1:
-        #         nn.init.xavier_uniform_(p)
-
-    def forward(self, x):
-        x  = self.mlp(self.extract_features(x))
-        return x 
-
-    def extract_features(self, x):
-        return self.conv_stack(x)[:, :, 0, 0]
-
 # For the generator, we will get out inspiration form
 # https://arxiv.org/pdf/1511.06434.pdf. 
 # and attempt to follow their guidelines.
@@ -200,7 +139,6 @@ class Critic(nn.Module):
 # We will do the same architecture as in the paper as a starting point.
 # Obviously, our images are smaller so we will tweek it a little bit.
 
-#Seems to mean the 
 class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
@@ -252,40 +190,11 @@ def init_weights(m):
         torch.nn.init.normal_(m.weight, mean=0, std=0.02)
         m.bias.data.fill_(0)
 
-
-def evaluate(classify, dataset):
-    with torch.no_grad():
-        classify.eval()
-        correct = 0.
-        total = 0.
-        for x, y in dataset:
-            if cuda:
-                x = x.cuda()
-                y = y.cuda()
-
-            c = (classify(x).argmax(dim=-1) == y).sum().item()
-            t = x.size(0)
-            correct += c
-            total += t
-    acc = correct / float(total)
-    return acc
-
-
-
-def wgan_critic_loss(critic, real_pictures, fake_pictures):
-    out_real = critic(real_pictures)
-    out_fake = critic(fake_pictures)
-    return torch.mean(out_fake-out_real)
-
-def wgan_generator_loss(critic, real_pictures, fake_pictures):
-    out_real = critic(real_pictures)
-    out_fake = critic(fake_pictures)
-    return torch.mean(out_fake-out_real)
-
 import scipy
 
+batch_size = 64
 
-
+# This one is just a confidence builder. Implementation of the WGAN-GP is lower in the code.
 
 def train_gan():
     train, valid, test = get_data_loader("svhn", batch_size)
@@ -336,8 +245,6 @@ def train_gan():
             out_true = m(discriminator(x_true))
             out_fake = m(discriminator(generated_picture))
 
-            generated_picture.register_hook(save_gradient)
-
             out = torch.cat((out_fake,out_true),0)
 
             always_true = torch.ones(out_true.shape).cuda() #Just for unit testing the discriminator
@@ -373,139 +280,10 @@ def train_gan():
         torch.save(generator.state_dict(), "generator_epoch" + str(epoch) + ".pt")
         torch.save(discriminator.state_dict(), "discriminator_epoch" + str(epoch) + ".pt")
         
-    discriminator = torch.load("discriminator.pt")
-    print("Test accuracy:", evaluate(discriminator, test))
+    #discriminator = torch.load("discriminator.pt")
+    #print("Test accuracy:", evaluate(discriminator, test))
 
 
-
-saved_gradient = None
-def save_gradient(gradient):
-    global saved_gradient
-    saved_gradient= gradient.detach()
-    #print("gradient")
-
-batch_size=64
-
-def compute_gp(true_picture, fake_pictures, critic):
-    cuda = torch.cuda.is_available()
-    epsilon = torch.FloatTensor(true_picture.shape[0],1,1,1).uniform_(0, 1)
-    gradient_outputs = torch.ones((true_picture.shape[0],1))
-    if cuda:
-        epsilon = epsilon.cuda()
-        gradient_outputs = gradient_outputs.cuda()
-
-    merged_pictures = epsilon*true_picture - (1-epsilon)*fake_pictures
-    #merged_picture.register_hook(save_gradient) #This will save gradient with regards to X 
-                                                        #in the "saved_gradient" global variable.
-    out_merged = critic(merged_pictures)
-    
-    gradients = torch.autograd.grad(out_merged, merged_pictures, gradient_outputs, create_graph=True, retain_graph=True, only_inputs=True)
-    saved_gradient = gradients[0]
-    gp = torch.pow((saved_gradient.view(64,-1).norm(dim=1) -1),2).mean()
-    return gp
-
-#Will will train a WGAN instead. Should be easier to make it work.
-def train_wgan():
-    gp_scaling = 10 #Lambda in the paper
-    n_critic=20
-    train, valid, test = get_data_loader("svhn", batch_size)
-    critic = Critic()
-    generator = Generator()
-    params_critic = critic.parameters()
-    optimizer_critic = Adam(params_critic,lr=0.0001, betas=(0.0,0.9))
-
-    params_generator = generator.parameters()
-    optimizer_generator = Adam(params_generator, lr=0.00005, betas=(0.0,0.9))
-
-    cuda = torch.cuda.is_available()
-    if cuda:
-        critic = critic.cuda()
-        generator=generator.cuda()
-
-    logfile = open("log.txt","w")
-    print(optimizer_generator, file=logfile)
-    print(optimizer_critic, file=logfile)
-    logfile.flush()
-    
-    for epoch in range(50):
-        critic.train()
-        #For training, we will borrow ideas heavily from this paper.
-        #https://arxiv.org/pdf/1706.08500.pdf
-
-        #We will use:
-        # The two time-scale update rule for GANs (One LR for the discriminator, and another one for the generator)
-        #                                         (The discriminator must be faster than the )
-        # Adam as the optimizer
-        # Use Wasserstein GAN loss function
-        #
-
-
-        #https://arxiv.org/pdf/1704.00028.pdf Following this algorithm
-
-        
-        
-        for i, (true_pictures, y) in enumerate(train):
-            #Player 1: The discriminator plays the game
-            #where it wants to tell a generated sample appart from a true sample.
-            time.sleep(0.1)
-            
-            z = torch.FloatTensor(true_pictures.shape[0],100,1,1).uniform_(-1, 1)
-            
-            if cuda:
-                true_pictures = true_pictures.cuda()
-                z=z.cuda()
-            fake_pictures = generator(z)
-            #
-
-            #Get the gradient for the merged picture part
-            critic.zero_grad()
-
-            out_fake = critic(fake_pictures)
-
-            
-
-            out_real = critic(true_pictures)
-            
-            wd = out_real.mean() - out_fake.mean()
-            
-            gp = compute_gp(true_pictures, fake_pictures, critic)
-            loss = -wd + gp_scaling * gp
-
-            loss.backward()
-            #torch.nn.utils.clip_grad_value_(params_critic,0.001)
-            generator.zero_grad() #Make sure the generator does not play here
-            optimizer_critic.step()
-            
-            D_real = out_real.mean().item()
-            D_fake1 = out_fake.mean().item()
-            
-            if (i%n_critic)==0:
-                #scipy.misc.imsave('/tmp/out.png',fake_pictures[0].detach().cpu().numpy().swapaxes(0,2))
-                generator.zero_grad()
-
-                fake_pictures = generator(z)
-                out_fake2 = critic(fake_pictures)
-                D_fake2 = out_fake2.mean().item()
-
-                #loss_generator = bceloss(out_fake, always_true_fake) #If the generator is not fooling the discriminator, it's bad
-                loss_generator = - out_fake2.mean()
-                loss_generator.backward()
-
-                print("Epoch: %2d, Iteration: %3d, C_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f Wd: % 5.2f" 
-                    %(epoch, i, loss.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd)) 
-
-                print("Epoch: %2d, Iteration: %3d, C_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f Wd: % 5.2f" 
-                    %(epoch, i, loss.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd), file=logfile) 
-
-                #torch.nn.utils.clip_grad_norm(params_generator,2)
-                critic.zero_grad() #Make sure no gradient is applied on the discriminator for the generator turn.
-                optimizer_generator.step()
-        print ("Epoch done")
-        scipy.misc.imsave('out' + str(epoch) +'.png',fake_pictures[0].detach().cpu().numpy().swapaxes(0,2))
-        torch.save(critic.state_dict(), "critic" + str(epoch)+ ".pt")
-        torch.save(generator.state_dict(), "generator" + str(epoch)+ ".pt")
-
-    print ("Training done, results in log.txt")
 
 if __name__ == "__main__":
-    train_wgan()
+    train_gan()
