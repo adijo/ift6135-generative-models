@@ -8,7 +8,7 @@ from Problem1 import networks
 from ta_code import samplers
 
 
-def discriminator(p_distribution, q_distribution, parameters):
+def problem_1_1_discriminator(p_distribution, q_distribution, parameters):
     """
     Problem 1.1 solution
 
@@ -49,16 +49,16 @@ def discriminator(p_distribution, q_distribution, parameters):
 
         model.zero_grad()
 
-        # ====================================================================
+        # ===================================================================
         # Feed forward and back propagation
-        # ====================================================================
+        # ===================================================================
         # We want:
         #   D_real           to approach 1 coming from 0
         #   D_fake           to approach 0 coming from 1
         #
         # The following feed forward and back propagation operations
-        # achieve that goal, therefore maximizing the WGAN objective function:
-        # ====================================================================
+        # achieve that goal, therefore maximizing the JSD objective function:
+        # ===================================================================
         D_real = model(real_data)
         D_real = torch.mean(torch.log(D_real))
         D_real.backward(minus_one)
@@ -81,7 +81,7 @@ def discriminator(p_distribution, q_distribution, parameters):
     return current_jensen_shannon_distance
 
 
-def critic(p_distribution, q_distribution, parameters):
+def problem_1_2_critic(p_distribution, q_distribution, parameters):
     """
     Problem 1.2 solution
 
@@ -191,16 +191,16 @@ def problem_1_3():
     for i in range(len(phi_range)):
         parameters['phi'] = phi_range[i]
 
-        print("-> Training discriminator (phi = {})".format(parameters['phi']))
-        jensen_shannon_distance = discriminator(
+        print("-> Training problem_1_1_discriminator (phi = {})".format(parameters['phi']))
+        jensen_shannon_distance = problem_1_1_discriminator(
             p_distribution=samplers.distribution1,
             q_distribution=samplers.distribution1,
             parameters=parameters
         )
 
-        print("-> Training critic (phi = {})".format(parameters['phi']))
+        print("-> Training problem_1_2_critic (phi = {})".format(parameters['phi']))
         while True:
-            wasserstein_distance = critic(
+            wasserstein_distance = problem_1_2_critic(
                 p_distribution=samplers.distribution1,
                 q_distribution=samplers.distribution1,
                 parameters=parameters
@@ -234,12 +234,74 @@ def problem_1_3():
     plt.show()
 
 
-def problem_1_4():
+def problem_1_4_discriminator(f_1_distribution, f_0_distribution, parameters):
     """
     Problem 1.4 solution
+
+    :param f_1_distribution: The known distribution
+    :param f_0_distribution: The unknown distribution
+    :param parameters: The hyper-parameters to use
+    :return: The trained discriminator
     """
-    # TODO: Implement
-    pass
+    # =====
+    # Setup
+    # =====
+    use_cuda = torch.cuda.is_available()
+    device = torch.device('cuda:0' if use_cuda else 'cpu')
+    model = networks.SimpleProbabilityMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
+    optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
+
+    one = torch.FloatTensor([1])
+    minus_one = one * -1
+    if use_cuda:
+        one = one.cuda(0)
+        minus_one = minus_one.cuda(0)
+
+    # ========
+    # Training
+    # ========
+    ten_percent = parameters['num_iterations']/10
+    for i in range(parameters['num_iterations']):
+        # ===========
+        # Sample data
+        # ===========
+        f_1_samples = torch.from_numpy(f_1_distribution(parameters['batch_size'])).float()
+        if use_cuda:
+            f_1_samples = f_1_samples.cuda(0)
+
+        f_0_samples = torch.from_numpy(f_0_distribution(parameters['batch_size'])).float()
+        if use_cuda:
+            f_0_samples = f_0_samples.cuda(0)
+
+        model.zero_grad()
+
+        # ==========================================================
+        # Feed forward and back propagation
+        # ==========================================================
+        # We want:
+        #   D_real           to approach 1 coming from 0
+        #   D_fake           to approach 0 coming from 1
+        #
+        # The following feed forward and back propagation operations
+        # achieve that goal, therefore maximizing the objective:
+        # ==========================================================
+        D_known = model(f_1_samples)
+        D_known = torch.mean(torch.log(D_known))
+        D_known.backward(minus_one)
+
+        D_unknown = model(f_0_samples)
+        D_unknown = torch.mean(torch.log(1 - D_unknown))
+        D_unknown.backward(minus_one)
+
+        optimizer.step()
+
+        if i % ten_percent == 0 or i+1 == parameters['num_iterations']:
+            print(
+                "Iteration {}/{}"
+                .format(i + 1, parameters['num_iterations'])
+            )
+
+    return model
 
 
 if __name__ == '__main__':
