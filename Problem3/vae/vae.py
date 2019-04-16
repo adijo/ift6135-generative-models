@@ -2,6 +2,7 @@ import torch
 
 from torch import nn
 import torch.nn.functional as F
+from torchvision.utils import save_image
 
 
 class Flatten(nn.Module):
