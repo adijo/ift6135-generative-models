@@ -18,7 +18,7 @@ def main(args):
     model = model.to(device)
     optimizer = optim.Adam(model.parameters())
     train_loader, valid_loader, _ = get_data_loader("svhn", args.batch_size)
-    trainer = create_vae_trainer(model, optimizer, loss_fn)
+    trainer = create_vae_trainer(model, optimizer, loss_fn, device)
     check_pointer = ModelCheckpoint(dirname="checkpoints",
                                     filename_prefix='vae',
                                     save_interval=5,
