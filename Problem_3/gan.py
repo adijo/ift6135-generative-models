@@ -384,13 +384,30 @@ def save_gradient(gradient):
     saved_gradient= gradient.detach()
     #print("gradient")
 
-batch_size=256
+batch_size=64
 
+def compute_gp(true_picture, fake_pictures, critic):
+    cuda = torch.cuda.is_available()
+    epsilon = torch.FloatTensor(true_picture.shape[0],1,1,1).uniform_(0, 1)
+    gradient_outputs = torch.ones((true_picture.shape[0],1))
+    if cuda:
+        epsilon = epsilon.cuda()
+        gradient_outputs = gradient_outputs.cuda()
+
+    merged_pictures = epsilon*true_picture - (1-epsilon)*fake_pictures
+    #merged_picture.register_hook(save_gradient) #This will save gradient with regards to X 
+                                                        #in the "saved_gradient" global variable.
+    out_merged = critic(merged_pictures)
+    
+    gradients = torch.autograd.grad(out_merged, merged_pictures, gradient_outputs, create_graph=True, retain_graph=True, only_inputs=True)
+    saved_gradient = gradients[0]
+    gp = torch.pow((saved_gradient.view(64,-1).norm(dim=1) -1),2).mean()
+    return gp
 
 #Will will train a WGAN instead. Should be easier to make it work.
 def train_wgan():
     gp_scaling = 10 #Lambda in the paper
-    n_critic=10
+    n_critic=20
     train, valid, test = get_data_loader("svhn", batch_size)
     critic = Critic()
     generator = Generator()
@@ -398,7 +415,7 @@ def train_wgan():
     optimizer_critic = Adam(params_critic,lr=0.0001, betas=(0.0,0.9))
 
     params_generator = generator.parameters()
-    optimizer_generator = Adam(params_generator, lr=0.0001, betas=(0.0,0.9))
+    optimizer_generator = Adam(params_generator, lr=0.00005, betas=(0.0,0.9))
 
     cuda = torch.cuda.is_available()
     if cuda:
@@ -427,48 +444,35 @@ def train_wgan():
 
         
         
-        for i, (true_picture, y) in enumerate(train):
+        for i, (true_pictures, y) in enumerate(train):
             #Player 1: The discriminator plays the game
             #where it wants to tell a generated sample appart from a true sample.
             time.sleep(0.1)
             
-            z = torch.FloatTensor(true_picture.shape[0],100,1,1).uniform_(-1, 1)
-            epsilon = torch.FloatTensor(true_picture.shape[0],1,1,1).uniform_(0, 1)
+            z = torch.FloatTensor(true_pictures.shape[0],100,1,1).uniform_(-1, 1)
+            
             if cuda:
-                true_picture = true_picture.cuda()
+                true_pictures = true_pictures.cuda()
                 z=z.cuda()
-                epsilon=epsilon.cuda()
-            generated_picture = generator(z)
-            #merged_picture = epsilon*true_picture - (1-epsilon)*generated_picture
+            fake_pictures = generator(z)
+            #
 
             #Get the gradient for the merged picture part
             critic.zero_grad()
-            #merged_picture.register_hook(save_gradient) #This will save gradient with regards to X 
-                                                        #in the "saved_gradient" global variable.
-            out_fake = critic(generated_picture)
-            #out_fake = critic(merged_picture)
-            #loss_out_fake = out_fake.mean()
-            #loss_critic = loss_out_fake
+
+            out_fake = critic(fake_pictures)
+
             
-            #loss_out_fake.backward()
 
-
-            out_real = critic(true_picture)
+            out_real = critic(true_pictures)
             
             wd = out_real.mean() - out_fake.mean()
             
-            #Time to compute the gradient penalty
-            #gp = torch.mul(torch.tensor(gp_scaling).float().cuda(), torch.pow((saved_gradient.view(64,-1).norm(dim=1) -1),2).mean())
-            #gp.backward()
-            #loss_out_real = -out_real.mean() #+ gp
-            #loss_out_real.backward()
-            #loss_critic+=loss_out_real
-            
-            #loss = out_fake.mean() - out_real.mean()
-            loss = -wd
+            gp = compute_gp(true_pictures, fake_pictures, critic)
+            loss = -wd + gp_scaling * gp
 
             loss.backward()
-            torch.nn.utils.clip_grad_value_(params_critic,0.001)
+            #torch.nn.utils.clip_grad_value_(params_critic,0.001)
             generator.zero_grad() #Make sure the generator does not play here
             optimizer_critic.step()
             
@@ -476,11 +480,11 @@ def train_wgan():
             D_fake1 = out_fake.mean().item()
             
             if (i%n_critic)==0:
-                scipy.misc.imsave('/tmp/out.png',generated_picture[0].detach().cpu().numpy().swapaxes(0,2))
+                #scipy.misc.imsave('/tmp/out.png',fake_pictures[0].detach().cpu().numpy().swapaxes(0,2))
                 generator.zero_grad()
 
-                generated_picture = generator(z)
-                out_fake2 = critic(generated_picture)
+                fake_pictures = generator(z)
+                out_fake2 = critic(fake_pictures)
                 D_fake2 = out_fake2.mean().item()
 
                 #loss_generator = bceloss(out_fake, always_true_fake) #If the generator is not fooling the discriminator, it's bad
@@ -497,11 +501,11 @@ def train_wgan():
                 critic.zero_grad() #Make sure no gradient is applied on the discriminator for the generator turn.
                 optimizer_generator.step()
         print ("Epoch done")
-        scipy.misc.imsave('out' + str(epoch) +'.png',generated_picture[0].detach().cpu().numpy().swapaxes(0,2))
+        scipy.misc.imsave('out' + str(epoch) +'.png',fake_pictures[0].detach().cpu().numpy().swapaxes(0,2))
+        torch.save(critic.state_dict(), "critic" + str(epoch)+ ".pt")
+        torch.save(generator.state_dict(), "generator" + str(epoch)+ ".pt")
 
-    discriminator = torch.load("discriminator.pt")
-    print("Test accuracy:", evaluate(discriminator, test))
-
+    print ("Training done, results in log.txt")
 
 if __name__ == "__main__":
     train_wgan()
