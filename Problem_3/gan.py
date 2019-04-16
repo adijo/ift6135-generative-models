@@ -390,7 +390,7 @@ batch_size=256
 #Will will train a WGAN instead. Should be easier to make it work.
 def train_wgan():
     gp_scaling = 10 #Lambda in the paper
-    n_critic=5
+    n_critic=10
     train, valid, test = get_data_loader("svhn", batch_size)
     critic = Critic()
     generator = Generator()
@@ -439,32 +439,37 @@ def train_wgan():
                 z=z.cuda()
                 epsilon=epsilon.cuda()
             generated_picture = generator(z)
-            merged_picture = epsilon*true_picture - (1-epsilon)*generated_picture
+            #merged_picture = epsilon*true_picture - (1-epsilon)*generated_picture
 
             #Get the gradient for the merged picture part
             critic.zero_grad()
-            merged_picture.register_hook(save_gradient) #This will save gradient with regards to X 
+            #merged_picture.register_hook(save_gradient) #This will save gradient with regards to X 
                                                         #in the "saved_gradient" global variable.
             out_fake = critic(generated_picture)
             #out_fake = critic(merged_picture)
-            loss_out_fake = out_fake.mean()
-            loss_critic = loss_out_fake
+            #loss_out_fake = out_fake.mean()
+            #loss_critic = loss_out_fake
             
-            loss_out_fake.backward()
+            #loss_out_fake.backward()
 
 
             out_real = critic(true_picture)
             
-
+            wd = out_real.mean() - out_fake.mean()
             
             #Time to compute the gradient penalty
             #gp = torch.mul(torch.tensor(gp_scaling).float().cuda(), torch.pow((saved_gradient.view(64,-1).norm(dim=1) -1),2).mean())
             #gp.backward()
-            loss_out_real = -out_real.mean() #+ gp
-            loss_out_real.backward()
-            loss_critic+=loss_out_real
+            #loss_out_real = -out_real.mean() #+ gp
+            #loss_out_real.backward()
+            #loss_critic+=loss_out_real
             
-            torch.nn.utils.clip_grad_norm(params_critic,2)
+            #loss = out_fake.mean() - out_real.mean()
+            loss = -wd
+
+            loss.backward()
+            torch.nn.utils.clip_grad_value_(params_critic,0.001)
+            generator.zero_grad() #Make sure the generator does not play here
             optimizer_critic.step()
             
             D_real = out_real.mean().item()
@@ -478,20 +483,18 @@ def train_wgan():
                 out_fake2 = critic(generated_picture)
                 D_fake2 = out_fake2.mean().item()
 
-                #Wasserstein distance
-                wd = D_real - D_fake1
-
                 #loss_generator = bceloss(out_fake, always_true_fake) #If the generator is not fooling the discriminator, it's bad
-                loss_generator = out_fake2.mean()
+                loss_generator = - out_fake2.mean()
                 loss_generator.backward()
 
                 print("Epoch: %2d, Iteration: %3d, C_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f Wd: % 5.2f" 
-                    %(epoch, i, loss_critic.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd)) 
+                    %(epoch, i, loss.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd)) 
 
                 print("Epoch: %2d, Iteration: %3d, C_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f Wd: % 5.2f" 
-                    %(epoch, i, loss_critic.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd), file=logfile) 
+                    %(epoch, i, loss.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd), file=logfile) 
 
-                torch.nn.utils.clip_grad_norm(params_generator,2)
+                #torch.nn.utils.clip_grad_norm(params_generator,2)
+                critic.zero_grad() #Make sure no gradient is applied on the discriminator for the generator turn.
                 optimizer_generator.step()
         print ("Epoch done")
         scipy.misc.imsave('out' + str(epoch) +'.png',generated_picture[0].detach().cpu().numpy().swapaxes(0,2))
@@ -501,4 +504,4 @@ def train_wgan():
 
 
 if __name__ == "__main__":
-    train_gan()
+    train_wgan()
