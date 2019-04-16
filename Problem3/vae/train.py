@@ -3,7 +3,7 @@ from torch.autograd import Variable
 import torch
 
 from Problem3.vae.svhn import get_data_loader
-from Problem3.vae.vae import VAE, loss_function
+from Problem3.vae.vae import VAE, loss_fn
 
 
 def train(model, optimizer, train_loader, loss_function, epoch, use_cuda=True, log_interval=10):
@@ -39,12 +39,12 @@ def train(model, optimizer, train_loader, loss_function, epoch, use_cuda=True, l
 Z_DIMS = 100
 NUM_EPOCHS = 1
 BATCH_SIZE=64
-is_cuda = torch.cuda.is_available()
-model = VAE(z_dims=Z_DIMS)
-if is_cuda:
+use_cuda = torch.cuda.is_available()
+model = VAE()
+if use_cuda:
     model = model.cuda()
 optimizer = optim.Adam(model.parameters(), lr=1e-3)
 train_loader, valid_loader, test_loader = get_data_loader("svhn", BATCH_SIZE)
 
 for epoch in range(NUM_EPOCHS):
-    train(model, optimizer, train_loader, loss_function, epoch)
+    train(model, optimizer, train_loader, loss_fn, epoch, use_cuda=use_cuda)
