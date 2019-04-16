@@ -2,7 +2,6 @@ import torch
 
 from torch import nn
 import torch.nn.functional as F
-from torchvision.utils import save_image
 
 
 class Flatten(nn.Module):
@@ -16,8 +15,9 @@ class UnFlatten(nn.Module):
 
 
 class VAE(nn.Module):
-    def __init__(self, image_channels=3, h_dim=2304, z_dim=100):
+    def __init__(self, device="cpu", image_channels=3, h_dim=2304, z_dim=100):
         super(VAE, self).__init__()
+        self.device = device
         self.encoder = nn.Sequential(
             nn.Conv2d(image_channels, 32, kernel_size=3, stride=1),
             nn.ReLU(),
@@ -45,10 +45,10 @@ class VAE(nn.Module):
             nn.ConvTranspose2d(256, image_channels, kernel_size=4, stride=2, padding=1),
         )
 
-    def reparameterize(self, mu, logvar):
-        std = logvar.mul(0.5).exp_()
+    def reparameterize(self, mu, log_var):
+        std = log_var.mul(0.5).exp_()
         # return torch.normal(mu, std)
-        esp = torch.randn(*mu.size())
+        esp = torch.randn(*mu.size(), device=self.device)
         z = mu + std * esp
         return z
 
@@ -74,12 +74,11 @@ class VAE(nn.Module):
 
 
 def loss_fn(recon_x, x, mu, log_var):
-    #BCE = F.binary_cross_entropy(recon_x, x, size_average=False)
     MSE = F.mse_loss(recon_x, x, size_average=False)
-
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
     KLD = -0.5 * torch.mean(1 + log_var - mu.pow(2) - log_var.exp())
 
     return MSE + KLD, MSE, KLD
+
