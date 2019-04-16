@@ -22,7 +22,7 @@ def problem_1_1_discriminator(p_distribution, q_distribution, parameters):
     # =====
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda:0' if use_cuda else 'cpu')
-    model = networks.SimpleProbabilityMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
+    model = networks.DiscriminatorMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
     optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
 
     one = torch.FloatTensor([1])
@@ -95,7 +95,7 @@ def problem_1_2_critic(p_distribution, q_distribution, parameters):
     # =====
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda:0' if use_cuda else 'cpu')
-    model = networks.SimpleProbabilityMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
+    model = networks.CriticMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
     optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
 
     one = torch.FloatTensor([1])
@@ -173,11 +173,11 @@ def problem_1_3():
 
     parameters = {
         'batch_size': 512,
-        'learning_rate': 2.05e-3,
+        'learning_rate': 1e-3,
         'num_iterations': 2000,
         'lambda_constant': 10,
         'input_dimensions': 2,
-        'hidden_layers_size': 250,
+        'hidden_layers_size': 32,
         'phi': -1
     }
 
@@ -199,18 +199,11 @@ def problem_1_3():
         )
 
         print("-> Training problem_1_2_critic (phi = {})".format(parameters['phi']))
-        while True:
-            wasserstein_distance = problem_1_2_critic(
-                p_distribution=samplers.distribution1,
-                q_distribution=samplers.distribution1,
-                parameters=parameters
-            )
-
-            if np.abs(wasserstein_distance-np.abs(parameters['phi'])) > 0.23:
-                print("-> Unexpected result for Wasserstein distance. Re-training for phi = {}".format(parameters['phi']))
-            else:
-                break
-
+        wasserstein_distance = problem_1_2_critic(
+            p_distribution=samplers.distribution1,
+            q_distribution=samplers.distribution1,
+            parameters=parameters
+        )
         jensen_shannon_distances[i] = jensen_shannon_distance
         wasserstein_distances[i] = wasserstein_distance
 
@@ -248,7 +241,7 @@ def problem_1_4_discriminator(f_1_distribution, f_0_distribution, parameters):
     # =====
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda:0' if use_cuda else 'cpu')
-    model = networks.SimpleProbabilityMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
+    model = networks.DiscriminatorMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
     optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
 
     one = torch.FloatTensor([1])
