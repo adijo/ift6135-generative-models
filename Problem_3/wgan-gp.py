@@ -6,6 +6,8 @@ import time
 import torch
 import torchvision.datasets
 import torchvision.transforms as transforms
+import torchvision.utils
+
 from torch.utils.data import dataset
 from torch import nn
 # from torch.nn.modules import upsampling
@@ -177,6 +179,7 @@ class Generator(nn.Module):
 
 
 #Designed to remove checkboard artifact https://distill.pub/2016/deconv-checkerboard/
+
 class GeneratorV2(nn.Module):
 
     def __init__(self):
@@ -239,16 +242,19 @@ def init_weights(m):
 #This one computes the gradient penalty.
 def compute_gp(true_picture, fake_pictures, critic):
     cuda = torch.cuda.is_available()
-    epsilon = torch.FloatTensor(true_picture.shape[0],1,1,1).uniform_(0, 1)
+    epsilon = torch.rand(true_picture.shape[0],1,1,1).uniform_(0, 1)
     gradient_outputs = torch.ones((true_picture.shape[0],1))
+    ones_epsilon = torch.ones((true_picture.shape[0],1,1,1))
+
     if cuda:
         epsilon = epsilon.cuda()
         gradient_outputs = gradient_outputs.cuda()
+        ones_epsilon = ones_epsilon.cuda()
 
-    merged_pictures = epsilon*true_picture - (1-epsilon)*fake_pictures
+    merged_pictures = epsilon*true_picture + ((ones_epsilon-epsilon)*fake_pictures)
     out_merged = critic(merged_pictures)
     
-    gradients = torch.autograd.grad(out_merged, merged_pictures, gradient_outputs, create_graph=True, retain_graph=True, only_inputs=True)
+    gradients = torch.autograd.grad(out_merged, merged_pictures, gradient_outputs, create_graph=True)
     saved_gradient = gradients[0]
     gp = torch.pow((saved_gradient.view(64,-1).norm(dim=1) -1),2).mean()
     return gp
@@ -257,9 +263,6 @@ def compute_gp(true_picture, fake_pictures, critic):
 
 def train_wgan():
     gp_scaling = 10 #Lambda in the paper
-   
-
-
     parser = argparse.ArgumentParser(
         description='Run a wgan-gp with parameters')
     parser.add_argument('--start_iteration', type=int, default=0,
@@ -272,12 +275,14 @@ def train_wgan():
                         help='Number of critic iterations')
     parser.add_argument('--gp_scaling', type=float, default=10,  #10 in the paper
                         help='Gradient Penalty Constant (Lambda)')
-    parser.add_argument('--max_iteration', type=int, default=100,  #10 in the paper
+    parser.add_argument('--max_iteration', type=int, default=100,  
                         help='Iteration when to stop')
-    parser.add_argument('--suffix', type=str, default="default",  #10 in the paper
+    parser.add_argument('--suffix', type=str, default="default",  
                         help='id for the test run')
     parser.add_argument('--batch_size', type=int, default=64,  #64 in the paper
                         help='number of element per batch')
+    parser.add_argument('--no-save', type=bool, default=False, 
+                        help='Activate in orde to not save at each epoch')
     args = parser.parse_args()
 
     suffix= args.suffix
@@ -304,7 +309,11 @@ def train_wgan():
     print(optimizer_critic, file=logfile)
     logfile.flush()
     
-    for epoch in range(args.max_iteration):
+    if(args.start_iteration!=0):
+        critic.load_state_dict(torch.load("critic"+ suffix + str(args.start_iteration)+ ".pt"))
+        generator.load_state_dict(torch.load("generator"+ suffix + str(args.start_iteration)+ ".pt"))
+
+    for epoch in range(args.start_iteration, args.max_iteration):
         critic.train()
         #For training, we will borrow ideas heavily from this paper.
         #https://arxiv.org/pdf/1706.08500.pdf
@@ -326,7 +335,7 @@ def train_wgan():
             #where it wants to tell a generated sample appart from a true sample.
             time.sleep(0.1)
             
-            z = torch.FloatTensor(true_pictures.shape[0],100,1,1).uniform_(-1, 1)
+            z = torch.FloatTensor(true_pictures.shape[0],100,1,1).normal_(0,1)
             
             if cuda:
                 true_pictures = true_pictures.cuda()
@@ -336,11 +345,13 @@ def train_wgan():
 
             #Get the gradient for the merged picture part
             critic.zero_grad()
+            generator.zero_grad()
 
             out_fake = critic(fake_pictures)
             out_real = critic(true_pictures)
             wd = out_real.mean() - out_fake.mean() 
             gp = compute_gp(true_pictures, fake_pictures, critic)
+
             loss = -wd + gp_scaling * gp
             loss.backward()
 
@@ -370,9 +381,19 @@ def train_wgan():
                 critic.zero_grad() #Make sure no gradient is applied on the discriminator for the generator turn.
                 optimizer_generator.step()
         print ("Epoch done")
-        scipy.misc.imsave('out' + suffix + str(epoch) +'.png',fake_pictures[0].detach().cpu().numpy().swapaxes(0,2))
-        torch.save(critic.state_dict(), "critic"+ suffix + str(epoch)+ ".pt")
-        torch.save(generator.state_dict(), "generator" +suffix + str(epoch)+ ".pt")
+        
+        #new pictures:
+        z = torch.FloatTensor(64,100,1,1).normal_(0,1)
+        if cuda:
+            z = z.cuda()
+        fake_pictures = generator(z)
+
+        if not args.no_save:
+            torch.save(critic.state_dict(), "critic"+ suffix + str(epoch)+ ".pt")
+            torch.save(generator.state_dict(), "generator" +suffix + str(epoch)+ ".pt")
+        torchvision.utils.save_image(fake_pictures.detach().cpu(), 'out' + suffix + str(epoch) +'.png', range=(-1,1))
+        #torchvision.utils.save_image(fake_pictures.detach().cpu(), 'out' + suffix + 'actual_'+ str(image)+'.png', range=(-1,1))
+           
 
     print ("Training done, results in log.txt")
 
