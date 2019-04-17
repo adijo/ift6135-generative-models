@@ -25,10 +25,8 @@ def problem_1_1_discriminator(p_distribution, q_distribution, parameters):
     model = networks.DiscriminatorMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
     optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
 
-    one = torch.FloatTensor([1])
-    minus_one = one * -1
+    minus_one = torch.FloatTensor([1]) * -1
     if use_cuda:
-        one = one.cuda(0)
         minus_one = minus_one.cuda(0)
 
     # ========
@@ -236,10 +234,8 @@ def problem_1_4_discriminator(f_1_distribution, f_0_distribution, parameters):
     model = networks.DiscriminatorMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
     optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
 
-    one = torch.FloatTensor([1])
-    minus_one = one * -1
+    minus_one = torch.FloatTensor([1]) * -1
     if use_cuda:
-        one = one.cuda(0)
         minus_one = minus_one.cuda(0)
 
     # ========

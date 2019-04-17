@@ -59,7 +59,7 @@ D = main.problem_1_4_discriminator(
 ############### (2) plot the estimated density contrasted with the true density
 
 # evaluate xx using your discriminator
-xx_tensor = torch.from_numpy(xx).cuda().float()
+xx_tensor = torch.from_numpy(xx).cuda().float() if torch.cuda.is_available() else torch.from_numpy(xx).float()
 xx_tensor = xx_tensor.view(xx_tensor.shape[0], 1)
 r = D(xx_tensor).data.cpu().numpy()
 plt.figure(figsize=(8,4))
