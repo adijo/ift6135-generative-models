@@ -24,7 +24,8 @@ def main(args):
     check_pointer = ModelCheckpoint(dirname="checkpoints",
                                     filename_prefix='vae',
                                     save_interval=5,
-                                    create_dir=True)
+                                    create_dir=True,
+                                    n_saved=10)
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def generate_image(engine):
