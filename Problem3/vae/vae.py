@@ -43,6 +43,7 @@ class VAE(nn.Module):
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(256, image_channels, kernel_size=4, stride=2, padding=1),
+            nn.Sigmoid()
         )
 
     def reparameterize(self, mu, log_var):
@@ -74,11 +75,11 @@ class VAE(nn.Module):
 
 
 def loss_fn(recon_x, x, mu, log_var):
-    MSE = F.mse_loss(recon_x, x, size_average=False)
+    MSE = F.mse_loss(recon_x, x, reduction="sum")
     # see Appendix B from VAE paper:
     # Kingma and Welling. Auto-Encoding Variational Bayes. ICLR, 2014
     # 0.5 * sum(1 + log(sigma^2) - mu^2 - sigma^2)
-    KLD = -0.5 * torch.mean(1 + log_var - mu.pow(2) - log_var.exp())
+    KLD = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
 
     return MSE + KLD, MSE, KLD
 
