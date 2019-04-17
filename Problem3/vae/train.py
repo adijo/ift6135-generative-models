@@ -28,21 +28,18 @@ def main(args):
 
     @trainer.on(Events.EPOCH_COMPLETED)
     def generate_image(engine):
-        z = torch.randn(size=(1, args.z_dim), device=device)
-        generated_sample = model.decode(z)
-        image_name = "generated_{}.png".format(str(engine.state.epoch))
-        save_image(generated_sample, os.path.join(arguments.gen_images_dir, image_name))
+        with torch.no_grad():
+            z = torch.randn(size=(arguments.batch_size, args.z_dim), device=device)
+            generated_sample = model.decode(z)
+            image_name = "generated_{}.png".format(str(engine.state.epoch))
+            save_image(generated_sample, os.path.join(arguments.gen_images_dir, image_name))
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_train_loss(engine):
         if engine.state.iteration % LOG_EVERY == 0:
             loss, mse, kld = engine.state.output
             print("Epoch: {}, Iteration: {}, Loss: {}, MSE: {}, KLD: {}".format(
-                engine.state.epoch,
-                engine.state.iteration,
-                loss,
-                mse,
-                kld
+                engine.state.epoch, engine.state.iteration, loss, mse, kld
             ))
 
     trainer.add_event_handler(Events.EPOCH_COMPLETED, check_pointer, {"mymodel": model})

@@ -43,6 +43,7 @@ class VAE(nn.Module):
             nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
             nn.ReLU(),
             nn.ConvTranspose2d(256, image_channels, kernel_size=4, stride=2, padding=1),
+            nn.Sigmoid()
         )
 
     def reparameterize(self, mu, log_var):
