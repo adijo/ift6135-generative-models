@@ -223,8 +223,8 @@ def problem_1_4_discriminator(f_1_distribution, f_0_distribution, parameters):
     """
     Problem 1.4 solution
 
-    :param f_1_distribution: The known distribution
-    :param f_0_distribution: The unknown distribution
+    :param f_1_distribution: The unknown distribution
+    :param f_0_distribution: The known distribution
     :param parameters: The hyper-parameters to use
     :return: The trained discriminator
     """
@@ -270,21 +270,21 @@ def problem_1_4_discriminator(f_1_distribution, f_0_distribution, parameters):
         # The following feed forward and back propagation operations
         # achieve that goal, therefore maximizing the objective:
         # ==========================================================
-        D_known = model(f_1_samples)
+        D_known = model(f_0_samples)
         D_known = torch.mean(torch.log(D_known))
 
-        D_unknown = model(f_0_samples)
+        D_unknown = model(f_1_samples)
         D_unknown = torch.mean(torch.log(1 - D_unknown))
 
-        loss = D_known + D_unknown
-        loss.backward(minus_one)
+        objective = D_known + D_unknown
+        objective.backward(minus_one)
 
         optimizer.step()
 
         if i % ten_percent == 0 or i+1 == parameters['num_iterations']:
             print(
-                "Iteration {}/{}"
-                .format(i + 1, parameters['num_iterations'])
+                "Iteration {}/{}, Value of the objective to maximize: {}"
+                .format(i + 1, parameters['num_iterations'], objective.item())
             )
 
     return model
