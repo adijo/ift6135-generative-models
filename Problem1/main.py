@@ -61,24 +61,23 @@ def problem_1_1_discriminator(p_distribution, q_distribution, parameters):
         # ===================================================================
         D_real = model(real_data)
         D_real = torch.mean(torch.log(D_real))
-        D_real.backward(minus_one)
 
         D_fake = model(fake_data)
         D_fake = torch.mean(torch.log(1 - D_fake))
-        D_fake.backward(minus_one)
 
         # Calculate current distance
-        current_jensen_shannon_distance = (torch.log(torch.FloatTensor([2])) + 0.5*(D_real + D_fake)).data.cpu().numpy()[0]
+        current_jensen_shannon_distance = torch.log(torch.cuda.FloatTensor([2])) + 0.5*(D_real + D_fake)
+        current_jensen_shannon_distance.backward(minus_one)
 
         optimizer.step()
 
         if i % ten_percent == 0 or i+1 == parameters['num_iterations']:
             print(
-                "Iteration {}/{}: Current Jensen-Shannon distance: : {}"
-                .format(i + 1, parameters['num_iterations'], current_jensen_shannon_distance)
+                "Iteration {}/{}: Current Jensen-Shannon distance: {}"
+                .format(i + 1, parameters['num_iterations'], current_jensen_shannon_distance.item())
             )
 
-    return current_jensen_shannon_distance
+    return current_jensen_shannon_distance.item()
 
 
 def problem_1_2_critic(p_distribution, q_distribution, parameters):
@@ -97,12 +96,6 @@ def problem_1_2_critic(p_distribution, q_distribution, parameters):
     device = torch.device('cuda:0' if use_cuda else 'cpu')
     model = networks.CriticMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
     optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
-
-    one = torch.FloatTensor([1])
-    minus_one = one * -1
-    if use_cuda:
-        one = one.cuda(0)
-        minus_one = minus_one.cuda(0)
 
     # ========
     # Training
@@ -135,19 +128,17 @@ def problem_1_2_critic(p_distribution, q_distribution, parameters):
         # ====================================================================
         D_real = model(real_data)
         D_real = D_real.mean()
-        D_real.backward(minus_one)
 
         D_fake = model(fake_data)
         D_fake = D_fake.mean()
-        D_fake.backward(one)
 
         gradient_penalty = utils.get_gradient_penalty(model, real_data.data, fake_data.data, use_cuda,
                                                       parameters['batch_size'], parameters['lambda_constant'])
-        gradient_penalty.backward()
 
         # Calculate current loss and distance
-        current_D_loss = -D_real + D_fake + gradient_penalty
         current_wasserstein_distance = D_real - D_fake
+        current_D_loss = -current_wasserstein_distance + gradient_penalty
+        current_D_loss.backward()
 
         # Gradient clipping
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
@@ -157,10 +148,10 @@ def problem_1_2_critic(p_distribution, q_distribution, parameters):
         if i % ten_percent == 0 or i+1 == parameters['num_iterations']:
             print(
                 "Iteration {}/{}: Current Wasserstein distance: {}, Critic loss: {}"
-                .format(i+1, parameters['num_iterations'], current_wasserstein_distance, current_D_loss)
+                .format(i+1, parameters['num_iterations'], current_wasserstein_distance.item(), current_D_loss.item())
             )
 
-    return current_wasserstein_distance.data.cpu().numpy()
+    return current_wasserstein_distance.item()
 
 
 def problem_1_3():
@@ -174,7 +165,7 @@ def problem_1_3():
     parameters = {
         'batch_size': 512,
         'learning_rate': 1e-3,
-        'num_iterations': 2000,
+        'num_iterations': 40000,
         'lambda_constant': 10,
         'input_dimensions': 2,
         'hidden_layers_size': 32,
@@ -203,7 +194,8 @@ def problem_1_3():
             p_distribution=samplers.distribution1,
             q_distribution=samplers.distribution1,
             parameters=parameters
-        )
+            )
+
         jensen_shannon_distances[i] = jensen_shannon_distance
         wasserstein_distances[i] = wasserstein_distance
 
@@ -280,11 +272,12 @@ def problem_1_4_discriminator(f_1_distribution, f_0_distribution, parameters):
         # ==========================================================
         D_known = model(f_1_samples)
         D_known = torch.mean(torch.log(D_known))
-        D_known.backward(minus_one)
 
         D_unknown = model(f_0_samples)
         D_unknown = torch.mean(torch.log(1 - D_unknown))
-        D_unknown.backward(minus_one)
+
+        loss = D_known + D_unknown
+        loss.backward(minus_one)
 
         optimizer.step()
 
