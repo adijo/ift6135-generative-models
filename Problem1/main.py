@@ -138,9 +138,6 @@ def problem_1_2_critic(p_distribution, q_distribution, parameters):
         current_D_loss = -current_wasserstein_distance + gradient_penalty
         current_D_loss.backward()
 
-        # Gradient clipping
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1)
-
         optimizer.step()
 
         if i % ten_percent == 0 or i+1 == parameters['num_iterations']:
@@ -163,10 +160,10 @@ def problem_1_3():
     parameters = {
         'batch_size': 512,
         'learning_rate': 1e-3,
-        'num_iterations': 40000,
-        'lambda_constant': 10,
+        'num_iterations': 100000,
+        'lambda_constant': 100,
         'input_dimensions': 2,
-        'hidden_layers_size': 32,
+        'hidden_layers_size': 64,
         'phi': -1
     }
 
