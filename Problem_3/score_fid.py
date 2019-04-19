@@ -71,7 +71,7 @@ def extract_features(classifier, data_loader):
             for i in range(h.shape[0]):
                 yield h[i]
 
-
+import os
 def calculate_fid_score(sample_feature_iterator,
                         testset_feature_iterator):
     """
@@ -94,35 +94,49 @@ def calculate_fid_score(sample_feature_iterator,
         samples=np.append(samples,[sample], axis=0)
         number_of_samples=number_of_samples+1
     
-    test_items=[]
-    for test_item in testset_feature_iterator:
-        if (number_of_test_samples==0): 
-            size=sample.size
-            test_items=np.empty((0,size))
-        test_items=np.append(test_items, [test_item], axis=0)
-        number_of_test_samples=number_of_test_samples+1
+    #It's quite long to get stats for the test set, and those stats 
+    #will not change over time, so we cache them
+    if os.path.isfile('mean_test.txt') and os.path.isfile('cov_test.txt'):
+        mean_test=np.loadtxt("mean_test.txt")
+        cov_test=np.loadtxt("cov_test.txt")
+    else:
+        test_items=[]
+        for test_item in testset_feature_iterator:
+            print(str(number_of_test_samples), end='\r')
+            if (number_of_test_samples==0): 
+                size=sample.size
+                test_items=np.empty((0,size))
+            test_items=np.append(test_items, [test_item], axis=0)
+            number_of_test_samples=number_of_test_samples+1
+        mean_test = np.mean(test_items,axis=0)
+        cov_test = np.cov(test_items, rowvar=False)
+        np.savetxt("mean_test.txt",mean_test)
+        np.savetxt("cov_test.txt",cov_test)
 
     #Then we work on the packed values. 
     mean_samples = np.mean(samples,axis=0)
     cov_samples = np.cov(samples, rowvar=False)
+    np.savetxt("mean_samples.txt",mean_samples)
+    np.savetxt("cov_samples.txt",cov_samples)
 
-    mean_test = np.mean(test_items,axis=0)
-    cov_test = np.cov(test_items, rowvar=False)
     #First term of the RHS of the equation
     delta_mean = mean_test-mean_samples
     norm = np.linalg.norm(delta_mean,2)
-    squared_norm = np.square(norm)
+    squared_norm = np.dot(norm,norm)
 
     #Second term of the RHS of the equation
-    cov_part = np.trace(cov_test + cov_samples - 2*sp.linalg.sqrtm(np.matmul(cov_test,cov_samples)))
-    return cov_part + squared_norm
+    cov_part = np.trace(cov_test + cov_samples - 2*sp.linalg.sqrtm(np.dot(cov_test,cov_samples)))
+
+    print("cov_part:", "squared_nom", cov_part, squared_norm)
+
+    return (cov_part + squared_norm).real #Just ignoring the imaginary part
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description='Score a directory of images with the FID score.')
     parser.add_argument('--model', type=str, default="svhn_classifier.pt",
                         help='Path to feature extraction model.')
-    parser.add_argument('directory', type=str,
+    parser.add_argument('directory', type=str, default="samples",
                         help='Path to image directory')
     args = parser.parse_args()
 
@@ -145,13 +159,5 @@ if __name__ == "__main__":
     test_loader = get_test_loader(PROCESS_BATCH_SIZE)
     test_f = extract_features(classifier, test_loader)
 
-    test_loader_ut1 = get_test_loader(PROCESS_BATCH_SIZE)
-    test_f_ut1 = extract_features(classifier, test_loader)
-
-    test_loader_ut2 = get_test_loader(PROCESS_BATCH_SIZE)
-    test_f_ut2 = extract_features(classifier, test_loader)
-
-    fid_score_unit_test = calculate_fid_score(test_f_ut1, test_f_ut2)
-    print("FID score unit test", fid_score_unit_test)
     fid_score = calculate_fid_score(sample_f, test_f)
     print("FID score:", fid_score)
