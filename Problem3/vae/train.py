@@ -30,10 +30,11 @@ def main(args):
     @trainer.on(Events.EPOCH_COMPLETED)
     def generate_image(engine):
         with torch.no_grad():
+            # sample from unit normal
             z = torch.randn(size=(arguments.batch_size, args.z_dim), device=device)
-            generated_sample = model.decode(z)
+            generated_samples_batch = model.decode(z)
             image_name = "generated_{}.png".format(str(engine.state.epoch))
-            save_image(generated_sample, os.path.join(arguments.gen_images_dir, image_name))
+            save_image(generated_samples_batch, os.path.join(arguments.gen_images_dir, image_name), normalize=True)
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_train_loss(engine):
