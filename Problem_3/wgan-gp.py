@@ -65,59 +65,29 @@ def get_data_loader(dataset_location, batch_size):
 # Such as no batch norm.
 
 class Critic(nn.Module):
-    def __init__(self):
+    def __init__(self, image_shape=(3, 32, 32), dim_factor=64):
         super(Critic, self).__init__()
-        self.conv_stack = nn.Sequential(
-            nn.Conv2d(3, 8, 3, padding=1),
-            #nn.BatchNorm2d(8),
-            nn.LeakyReLU(0.2),
-            
-            nn.Dropout2d(p=0.1),
-            nn.Conv2d(8, 16, 3, padding=1, stride=2),
-            #nn.BatchNorm2d(16),
-            nn.LeakyReLU(0.2),
-            
 
-            nn.Conv2d(16, 16, 3, padding=1),
-            #nn.BatchNorm2d(16),
+        self.critic = nn.Sequential(
+            nn.ZeroPad2d(2),
+            nn.Conv2d(3,64,kernel_size=5, stride=2),
             nn.LeakyReLU(0.2),
-            
-
-            nn.Dropout2d(p=0.1),
-            nn.Conv2d(16, 32, 3, padding=1, stride=2),
-            #nn.BatchNorm2d(32),
+            nn.ZeroPad2d(2),
+            nn.Conv2d(64,128,kernel_size=5, stride=2),
             nn.LeakyReLU(0.2),
-            
-
-            nn.Conv2d(32, 64, 3, padding=1),
-            #nn.BatchNorm2d(64),
-            nn.LeakyReLU(0.2),
-            
-
-            nn.Dropout2d(p=0.1),
-            nn.Conv2d(64, 128, 3, padding=1, stride=2),
-            #nn.BatchNorm2d(128),
-            nn.LeakyReLU(0.2), #As in the paper https://arxiv.org/pdf/1511.06434.pdf
-
-            nn.Conv2d(128, 512, 2),
+            nn.ZeroPad2d(2),
+            nn.Conv2d(128,256,kernel_size=5, stride=2),
+            #nn.LeakyReLU(0.2),
+            #nn.Linear(256*4*4,1)
         )
-
-        self.mlp = nn.Sequential(
-            nn.LeakyReLU(0.2),
-            #nn.Dropout(0.5),
-            nn.Linear(512, 1), #We just want to know if the image is fake or not.
-        )
-
-        init_weights(self)
-
-        # for p in self.parameters():
-        #     if p.dim() > 1:
-        #         nn.init.xavier_uniform_(p)
+        self.linear= nn.Linear(256*4*4,1)
 
     def forward(self, x):
-        x  = self.mlp(self.extract_features(x))
+        #x  = self.conv_transpose_stack(x) [:, :, 0, 0]
+        x = self.critic(x)
+        x = x.view(x.size(0),-1)
+        x = self.linear(x)
         return x 
-
     def extract_features(self, x):
         return self.conv_stack(x)[:, :, 0, 0]
 
@@ -138,99 +108,25 @@ class Generator(nn.Module):
     def __init__(self):
         super(Generator, self).__init__()
         # Step 1, project to 1024x4x4
-        self.conv1 = nn.ConvTranspose2d(100,1024,4,1)
-        self.bn1 = nn.BatchNorm2d(1024)
-        self.relu1 = nn.ReLU()
 
-            #Step 2, project to 8x8 x 512
-        self.conv2 = nn.ConvTranspose2d(1024,512,5)
-        self.relu2 =     nn.ReLU()
-        self.bn2 =     nn.BatchNorm2d(512)
-
-            #Step 3, stride of 2 to projet 8x8 to 16x16
-        self.conv3=    nn.ConvTranspose2d(512, 256, 4, stride=2, padding=1)
-        self.relu3=    nn.ReLU()
-        self.bn3 =    nn.BatchNorm2d(256)
-
-            #Step 4, stride of 2 to projet 16x16 to 32x32
-        self.conv4 =    nn.ConvTranspose2d(256, 3, 4, stride=2, padding=1)
-        self.tanh4 =    nn.Tanh()
-
-        init_weights(self)
+        self.decoder = nn.Sequential(
+            nn.ConvTranspose2d(100, 1024, kernel_size=4, stride=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(1024, 512, kernel_size=5, stride=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(512, 256, kernel_size=4, stride=2, padding=1),
+            nn.ReLU(),
+            nn.ConvTranspose2d(256, 3, kernel_size=4, stride=2, padding=1),
+            nn.Tanh()
+        )
 
     def forward(self, x):
         #x  = self.conv_transpose_stack(x) [:, :, 0, 0]
-        x = self.conv1(x) # Step 1, project to 1024x4x4
-        x = self.bn1(x)
-        x = self.relu1(x)
-
-        x = self.conv2(x) #Step 2, project to 8x8 x 512
-        x = self.bn2(x)
-        x = self.relu2(x)
-
-        x = self.conv3(x) #Step 3, stride of 2 to projet 8x8 to 16x16
-        x = self.bn3(x)
-        x = self.relu3(x)
-
-        x = self.conv4(x) #Step 4, stride of 2 to projet 16x16 to 32x32
-        x = self.tanh4(x)
+        x = self.decoder(x)
 
         return x 
 
 
-#Designed to remove checkboard artifact https://distill.pub/2016/deconv-checkerboard/
-
-class GeneratorV2(nn.Module):
-
-    def __init__(self):
-        super(GeneratorV2, self).__init__()
-        # Step 1, project to 1024x4x4
-        self.conv1 = nn.ConvTranspose2d(100,1024,4,1)
-        self.bn1 = nn.BatchNorm2d(1024)
-        self.relu1 = nn.ReLU()
-
-            #Step 2, project to 8x8 x 512
-        self.us2 = nn.Upsample((8,8))
-        self.conv2 = nn.ConvTranspose2d(1024,512,3, stride=1, padding=1)
-        self.relu2 =     nn.ReLU()
-        self.bn2 =     nn.BatchNorm2d(512)
-
-            #Step 3, stride of 2 to projet 8x8 to 16x16
-        self.us3 = nn.Upsample((16,16))
-        self.conv3=    nn.ConvTranspose2d(512, 256, 3, stride=1, padding=1)
-        self.relu3=    nn.ReLU()
-        self.bn3 =    nn.BatchNorm2d(256)
-
-            #Step 4, stride of 2 to projet 16x16 to 32x32
-        self.us4 = nn.Upsample((32,32))
-        self.conv4 =    nn.ConvTranspose2d(256, 3, 3, stride=1, padding=1)
-        self.tanh4 =    nn.Tanh()
-
-        init_weights(self)
-
-    def forward(self, x):
-        #x  = self.conv_transpose_stack(x) [:, :, 0, 0]
-        x = self.conv1(x) # Step 1, project to 1024x4x4
-        x = self.bn1(x)
-        x = self.relu1(x)
-
-        x = self.us2(x)
-        x = self.conv2(x) #Step 2, project to 8x8 x 512
-        x = self.bn2(x)
-        x = self.relu2(x)
-
-        x = self.us3(x)
-        x = self.conv3(x) #Step 3, stride of 2 to projet 8x8 to 16x16
-        x = self.bn3(x)
-        x = self.relu3(x)
-
-        x = self.us4(x)
-        x = self.conv4(x) #Step 4, stride of 2 to projet 16x16 to 32x32
-        x = self.tanh4(x)
-
-        return x 
-
-#https://arxiv.org/pdf/1511.06434.pdf
 # All weights were initialized from a zero-centered Normal distributionwith standard deviation 0.02
 def init_weights(m):
     if type(m) == nn.Linear:
@@ -265,17 +161,17 @@ def train_wgan():
     gp_scaling = 10 #Lambda in the paper
     parser = argparse.ArgumentParser(
         description='Run a wgan-gp with parameters')
-    parser.add_argument('--start_iteration', type=int, default=0,
+    parser.add_argument('--start_iteration', type=int, default=214,
                         help='Iteration number. If more than 0, it will load a saved critic/generator pair.')
     parser.add_argument('--lr_generator', type=float, default=0.00005,
                         help='Generator Learning Rate')
     parser.add_argument('--lr_critic', type=float, default=0.0001,
                         help='Generator Learning Rate')
-    parser.add_argument('--n_critic', type=float, default=20,   #5 in the paper, but the TA told us that we might need to tweak this one.
+    parser.add_argument('--n_critic', type=float, default=10,   #5 in the paper, but the TA told us that we might need to tweak this one.
                         help='Number of critic iterations')
     parser.add_argument('--gp_scaling', type=float, default=10,  #10 in the paper
                         help='Gradient Penalty Constant (Lambda)')
-    parser.add_argument('--max_iteration', type=int, default=100,  
+    parser.add_argument('--max_iteration', type=int, default=500,  
                         help='Iteration when to stop')
     parser.add_argument('--suffix', type=str, default="default",  
                         help='id for the test run')
@@ -283,6 +179,11 @@ def train_wgan():
                         help='number of element per batch')
     parser.add_argument('--no-save', type=bool, default=False, 
                         help='Activate in orde to not save at each epoch')
+    parser.add_argument('--taper_epoch', type=int, default=3,  #Epoch at which "n_critic" will go down from "n_critic_boosted" to "n_critic"
+                        help='Activate in orde to not save at each epoch')
+    parser.add_argument('--n_critic_boosted', type=int, default=100,   
+                        help='Number of boosted critic iterations until taper_epoch')
+
     args = parser.parse_args()
 
     suffix= args.suffix
@@ -292,7 +193,7 @@ def train_wgan():
 
     train, valid, test = get_data_loader("svhn", batch_size)
     critic = Critic()
-    generator = GeneratorV2()
+    generator = Generator()
     params_critic = critic.parameters()
     optimizer_critic = Adam(params_critic,lr=args.lr_critic, betas=(0.0,0.9))
 
@@ -309,12 +210,23 @@ def train_wgan():
     print(optimizer_critic, file=logfile)
     logfile.flush()
     
+    fixed_z = torch.FloatTensor(64,100,1,1).normal_(0,1) #Used to compare pictures from epoch to epoch
+
     if(args.start_iteration!=0):
         critic.load_state_dict(torch.load("critic"+ suffix + str(args.start_iteration)+ ".pt"))
         generator.load_state_dict(torch.load("generator"+ suffix + str(args.start_iteration)+ ".pt"))
 
     for epoch in range(args.start_iteration, args.max_iteration):
         critic.train()
+
+        if epoch < args.taper_epoch:
+            target_n_critic=args.n_critic_boosted
+        else:
+            target_n_critic= args.n_critic
+        if cuda:
+            fixed_z = fixed_z.cuda()
+
+        
         #For training, we will borrow ideas heavily from this paper.
         #https://arxiv.org/pdf/1706.08500.pdf
 
@@ -328,7 +240,13 @@ def train_wgan():
 
         #https://arxiv.org/pdf/1704.00028.pdf Following this algorithm
 
-        
+        #new pictures:
+        fake_pictures = generator(fixed_z)
+
+        if not args.no_save:
+            torch.save(critic.state_dict(), "critic"+ suffix + str(epoch)+ ".pt")
+            torch.save(generator.state_dict(), "generator" +suffix + str(epoch)+ ".pt")
+        torchvision.utils.save_image(fake_pictures.detach().cpu(), 'out' + suffix + str(epoch) +'.png', normalize=True)
         
         for i, (true_pictures, y) in enumerate(train):
             #Player 1: The discriminator plays the game
@@ -361,8 +279,12 @@ def train_wgan():
             
             D_real = out_real.mean().item()
             D_fake1 = out_fake.mean().item()
+
+            if (i % 501) == 0:
+                n_critic=args.n_critic_boosted
             
             if (i%n_critic)==0:
+                n_critic = target_n_critic
                 generator.zero_grad()
 
                 fake_pictures = generator(z)
@@ -372,26 +294,17 @@ def train_wgan():
                 loss_generator = - out_fake2.mean()
                 loss_generator.backward()
 
-                print("Epoch: %2d, Iteration: %3d, C_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f Wd: % 5.2f" 
-                    %(epoch, i, loss.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd)) 
+                print("Epoch: %2d, Iteration: %3d, C_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f Wd: % 5.2f Gp: % 5.2f" 
+                    %(epoch, i, loss.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd, gp)) 
 
-                print("Epoch: %2d, Iteration: %3d, C_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f Wd: % 5.2f" 
-                    %(epoch, i, loss.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd), file=logfile) 
+                print("Epoch: %2d, Iteration: %3d, C_Loss: % 5.5f, G_Loss: % 5.2f, D_real: % 5.2f D_fake1: % 5.2f D_fake2: % 5.2f Wd: % 5.2f Gp: % 5.2f" 
+                    %(epoch, i, loss.item(), loss_generator.item(), D_real, D_fake1, D_fake2, wd, gp), file=logfile) 
 
                 critic.zero_grad() #Make sure no gradient is applied on the discriminator for the generator turn.
                 optimizer_generator.step()
         print ("Epoch done")
         
-        #new pictures:
-        z = torch.FloatTensor(64,100,1,1).normal_(0,1)
-        if cuda:
-            z = z.cuda()
-        fake_pictures = generator(z)
-
-        if not args.no_save:
-            torch.save(critic.state_dict(), "critic"+ suffix + str(epoch)+ ".pt")
-            torch.save(generator.state_dict(), "generator" +suffix + str(epoch)+ ".pt")
-        torchvision.utils.save_image(fake_pictures.detach().cpu(), 'out' + suffix + str(epoch) +'.png', range=(-1,1))
+        
         #torchvision.utils.save_image(fake_pictures.detach().cpu(), 'out' + suffix + 'actual_'+ str(image)+'.png', range=(-1,1))
            
 
