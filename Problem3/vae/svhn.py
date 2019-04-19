@@ -6,8 +6,8 @@ from torchvision.transforms import transforms
 
 image_transform = transforms.Compose([
     transforms.ToTensor(),
-    transforms.Normalize((.5, .5, .5),
-                         (.5, .5, .5))
+    #transforms.Normalize((.5, .5, .5),
+    #                     (.5, .5, .5))
 ])
 
 

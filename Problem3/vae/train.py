@@ -34,7 +34,7 @@ def main(args):
             z = torch.randn(size=(arguments.batch_size, args.z_dim), device=device)
             generated_samples_batch = model.decode(z)
             image_name = "generated_{}.png".format(str(engine.state.epoch))
-            save_image(generated_samples_batch, os.path.join(arguments.gen_images_dir, image_name), normalize=True)
+            save_image(generated_samples_batch, os.path.join(arguments.gen_images_dir, image_name))
 
     @trainer.on(Events.ITERATION_COMPLETED)
     def log_train_loss(engine):
