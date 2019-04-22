@@ -66,10 +66,10 @@ def get_data_loader(dataset_location, batch_size, extra=False):
 
 
 
-# This will be used to implement a WGAN. 
-# It is basically the TA classifier, but tweaked to be a discriminator
-# by using the tips the paper. https://arxiv.org/pdf/1704.00028.pdf
-# Such as no batch norm.
+# The architecture of this critic is borrowed from the Cheng Bin Jin
+# implementation of the wgan_gp.
+
+#https://github.com/ChengBinJin/WGAN-GP-tensorflow
 
 class Critic(nn.Module):
     def __init__(self, image_shape=(3, 32, 32), dim_factor=64):
@@ -180,7 +180,7 @@ def train_wgan():
                         help='Number of critic iterations')
     parser.add_argument('--gp_scaling', type=float, default=10,  #10 in the paper
                         help='Gradient Penalty Constant (Lambda)')
-    parser.add_argument('--max_iteration', type=int, default=500,  
+    parser.add_argument('--max_iteration', type=int, default=200,  
                         help='Iteration when to stop')
     parser.add_argument('--suffix', type=str, default="default",  
                         help='id for the test run')
@@ -188,9 +188,9 @@ def train_wgan():
                         help='number of element per batch')
     parser.add_argument('--no-save', type=bool, default=False, 
                         help='Activate in orde to not save at each epoch')
-    parser.add_argument('--taper_epoch', type=int, default=3,  #Epoch at which "n_critic" will go down from "n_critic_boosted" to "n_critic"
+    parser.add_argument('--taper_epoch', type=int, default=100,  #Epoch at which "n_critic" will go down from "n_critic_boosted" to "n_critic"
                         help='Activate in orde to not save at each epoch')
-    parser.add_argument('--n_critic_boosted', type=int, default=100,   
+    parser.add_argument('--n_critic_boosted', type=int, default=45,   
                         help='Number of boosted critic iterations until taper_epoch')
     parser.add_argument('--pretrained_critic', type=str, default="gan_weights.pt",   
                         help='Path to the pre-trained critic weights')
@@ -254,7 +254,6 @@ def train_wgan():
 
         #https://arxiv.org/pdf/1704.00028.pdf Following this algorithm
 
-        #new pictures:
         fake_pictures = generator(fixed_z)
 
         if not args.no_save:
@@ -262,7 +261,7 @@ def train_wgan():
             torch.save(generator.state_dict(), "generator" +suffix + str(epoch)+ ".pt")
         torchvision.utils.save_image(fake_pictures.detach().cpu(), 'out' + suffix + str(epoch) +'.png', normalize=True)
         
-        #In order to compute FID score each iteration
+        #In order to compute FID score each iteration, we output 1000 images each epoch.
         for j in range(int(1000/64)):
             z = torch.FloatTensor(64,100,1,1).normal_(0,1)
             if cuda:
@@ -282,9 +281,6 @@ def train_wgan():
                 true_pictures = true_pictures.cuda()
                 z=z.cuda()
             fake_pictures = generator(z)
-            #
-
-            #Get the gradient for the merged picture part
             critic.zero_grad()
             generator.zero_grad()
 
@@ -327,11 +323,6 @@ def train_wgan():
                 optimizer_generator.step()
         print ("Epoch done")
         
-
-        
-        #torchvision.utils.save_image(fake_pictures.detach().cpu(), 'out' + suffix + 'actual_'+ str(image)+'.png', range=(-1,1))
-           
-
     print ("Training done, results in log.txt")
 
 if __name__ == "__main__":
