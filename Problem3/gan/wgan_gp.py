@@ -80,10 +80,10 @@ class Critic(nn.Module):
             nn.Conv2d(3,64,kernel_size=5, stride=2),
             nn.LeakyReLU(0.2),
             nn.ZeroPad2d(2),
-            nn.Conv2d(128,256,kernel_size=5, stride=2),
+            nn.Conv2d(64,128,kernel_size=5, stride=2),
             nn.LeakyReLU(0.2),
             nn.ZeroPad2d(2),
-            nn.Conv2d(256,512,kernel_size=5, stride=2),
+            nn.Conv2d(128,512,kernel_size=5, stride=2),
             nn.LeakyReLU(0.2),
         )
         self.linear= nn.Linear(512*4*4,1)
