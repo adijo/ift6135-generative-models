@@ -116,6 +116,9 @@ def calculate_fid_score(sample_feature_iterator,
     #Then we work on the packed values. 
     mean_samples = np.mean(samples,axis=0)
     cov_samples = np.cov(samples, rowvar=False)
+
+    offset = np.eye(cov_samples.shape[0]) * 1e-6
+
     np.savetxt("mean_samples.txt",mean_samples)
     np.savetxt("cov_samples.txt",cov_samples)
 
@@ -125,9 +128,9 @@ def calculate_fid_score(sample_feature_iterator,
     squared_norm = np.dot(norm,norm)
 
     #Second term of the RHS of the equation
+    cov_part_offset = np.trace(cov_test + cov_samples - 2*sp.linalg.sqrtm(np.dot(cov_test,cov_samples)+offset))
     cov_part = np.trace(cov_test + cov_samples - 2*sp.linalg.sqrtm(np.dot(cov_test,cov_samples)))
-
-    print("cov_part:", "squared_nom", cov_part, squared_norm)
+    print("cov_part_offset: ", cov_part_offset, "cov_part:", cov_part, "squared_nom", squared_norm )
 
     return (cov_part + squared_norm).real #Just ignoring the imaginary part
 
