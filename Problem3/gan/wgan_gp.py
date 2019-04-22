@@ -1,3 +1,4 @@
+
 #!/usr/bin/env python
 import argparse
 #TODO: Implement a GAN
@@ -21,13 +22,19 @@ image_transform = transforms.Compose([
 ])
 
 
-def get_data_loader(dataset_location, batch_size):
-    trainvalid = torchvision.datasets.SVHN(
-        dataset_location, split='train',
-        download=True,
-        transform=image_transform
-    )
-
+def get_data_loader(dataset_location, batch_size, extra=False):
+    if not extra:
+        trainvalid = torchvision.datasets.SVHN(
+            dataset_location, split='train',
+            download=True,
+            transform=image_transform
+        )
+    else:
+        trainvalid = torchvision.datasets.SVHN(
+            dataset_location, split='extra',
+            download=True,
+            transform=image_transform
+        )   
     trainset_size = int(len(trainvalid) * 0.9)
     trainset, validset = dataset.random_split(
         trainvalid,
@@ -76,11 +83,10 @@ class Critic(nn.Module):
             nn.Conv2d(64,128,kernel_size=5, stride=2),
             nn.LeakyReLU(0.2),
             nn.ZeroPad2d(2),
-            nn.Conv2d(128,256,kernel_size=5, stride=2),
-            #nn.LeakyReLU(0.2),
-            #nn.Linear(256*4*4,1)
+            nn.Conv2d(128,512,kernel_size=5, stride=2),
+            nn.LeakyReLU(0.2),
         )
-        self.linear= nn.Linear(256*4*4,1)
+        self.linear= nn.Linear(512*4*4,1)
 
     def forward(self, x):
         #x  = self.conv_transpose_stack(x) [:, :, 0, 0]
@@ -90,6 +96,7 @@ class Critic(nn.Module):
         return x 
     def extract_features(self, x):
         return self.conv_stack(x)[:, :, 0, 0]
+
 
 # For the generator, we will get out inspiration form
 # https://arxiv.org/pdf/1511.06434.pdf. 
@@ -147,7 +154,9 @@ def compute_gp(true_picture, fake_pictures, critic):
         gradient_outputs = gradient_outputs.cuda()
         ones_epsilon = ones_epsilon.cuda()
 
+    
     merged_pictures = epsilon*true_picture + ((ones_epsilon-epsilon)*fake_pictures)
+    merged_pictures.requires_grad=True
     out_merged = critic(merged_pictures)
     
     gradients = torch.autograd.grad(out_merged, merged_pictures, gradient_outputs, create_graph=True)
@@ -161,9 +170,9 @@ def train_wgan():
     gp_scaling = 10 #Lambda in the paper
     parser = argparse.ArgumentParser(
         description='Run a wgan-gp with parameters')
-    parser.add_argument('--start_iteration', type=int, default=214,
+    parser.add_argument('--start_iteration', type=int, default=0,
                         help='Iteration number. If more than 0, it will load a saved critic/generator pair.')
-    parser.add_argument('--lr_generator', type=float, default=0.00005,
+    parser.add_argument('--lr_generator', type=float, default=0.0001,
                         help='Generator Learning Rate')
     parser.add_argument('--lr_critic', type=float, default=0.0001,
                         help='Generator Learning Rate')
@@ -183,7 +192,11 @@ def train_wgan():
                         help='Activate in orde to not save at each epoch')
     parser.add_argument('--n_critic_boosted', type=int, default=100,   
                         help='Number of boosted critic iterations until taper_epoch')
-
+    parser.add_argument('--pretrained_critic', type=str, default="gan_weights.pt",   
+                        help='Path to the pre-trained critic weights')
+    parser.add_argument('--extra', type=bool, default=False,   
+                        help='Use the "Extra" data instead of training data')
+    
     args = parser.parse_args()
 
     suffix= args.suffix
@@ -191,7 +204,7 @@ def train_wgan():
     gp_scaling = args.gp_scaling
     batch_size=args.batch_size
 
-    train, valid, test = get_data_loader("svhn", batch_size)
+    train, valid, test = get_data_loader("svhn", batch_size, args.extra)
     critic = Critic()
     generator = Generator()
     params_critic = critic.parameters()
@@ -213,6 +226,7 @@ def train_wgan():
     fixed_z = torch.FloatTensor(64,100,1,1).normal_(0,1) #Used to compare pictures from epoch to epoch
 
     if(args.start_iteration!=0):
+        print("Loading previous state")
         critic.load_state_dict(torch.load("critic"+ suffix + str(args.start_iteration)+ ".pt"))
         generator.load_state_dict(torch.load("generator"+ suffix + str(args.start_iteration)+ ".pt"))
 
@@ -248,6 +262,15 @@ def train_wgan():
             torch.save(generator.state_dict(), "generator" +suffix + str(epoch)+ ".pt")
         torchvision.utils.save_image(fake_pictures.detach().cpu(), 'out' + suffix + str(epoch) +'.png', normalize=True)
         
+        #In order to compute FID score each iteration
+        for j in range(int(1000/64)):
+            z = torch.FloatTensor(64,100,1,1).normal_(0,1)
+            if cuda:
+                z=z.cuda()
+            fake_pictures = generator(z)
+            for k in range(64):
+                torchvision.utils.save_image(fake_pictures[k].detach().cpu(), 'samples/wgan/wgan_gp'+str(j*64 + k)+'.png', normalize=True)
+
         for i, (true_pictures, y) in enumerate(train):
             #Player 1: The discriminator plays the game
             #where it wants to tell a generated sample appart from a true sample.
@@ -265,10 +288,10 @@ def train_wgan():
             critic.zero_grad()
             generator.zero_grad()
 
-            out_fake = critic(fake_pictures)
+            out_fake = critic(fake_pictures.detach()) #We don't want to backprop through the generator 
             out_real = critic(true_pictures)
             wd = out_real.mean() - out_fake.mean() 
-            gp = compute_gp(true_pictures, fake_pictures, critic)
+            gp = compute_gp(true_pictures.data, fake_pictures.data, critic)
 
             loss = -wd + gp_scaling * gp
             loss.backward()
@@ -304,6 +327,7 @@ def train_wgan():
                 optimizer_generator.step()
         print ("Epoch done")
         
+
         
         #torchvision.utils.save_image(fake_pictures.detach().cpu(), 'out' + suffix + 'actual_'+ str(image)+'.png', range=(-1,1))
            
