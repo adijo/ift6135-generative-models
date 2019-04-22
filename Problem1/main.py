@@ -229,7 +229,7 @@ def problem_1_4_discriminator(f_1_distribution, f_0_distribution, parameters):
     use_cuda = torch.cuda.is_available()
     device = torch.device('cuda:0' if use_cuda else 'cpu')
     model = networks.DiscriminatorMLP(parameters['input_dimensions'], parameters['hidden_layers_size']).to(device)
-    optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'])
+    optimizer = optim.Adam(model.parameters(), lr=parameters['learning_rate'])
 
     minus_one = torch.FloatTensor([1]) * -1
     if use_cuda:
@@ -264,10 +264,10 @@ def problem_1_4_discriminator(f_1_distribution, f_0_distribution, parameters):
         # achieve that goal, therefore maximizing the objective:
         # ==========================================================
         D_known = model(f_0_samples)
-        D_known = torch.mean(torch.log(D_known))
+        D_known = torch.mean(torch.log(1-D_known))
 
         D_unknown = model(f_1_samples)
-        D_unknown = torch.mean(torch.log(1 - D_unknown))
+        D_unknown = torch.mean(torch.log(D_unknown))
 
         objective = D_known + D_unknown
         objective.backward(minus_one)
