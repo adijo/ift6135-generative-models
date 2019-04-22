@@ -132,6 +132,8 @@ def calculate_fid_score(sample_feature_iterator,
     cov_part = np.trace(cov_test + cov_samples - 2*sp.linalg.sqrtm(np.dot(cov_test,cov_samples)))
     print("cov_part_offset: ", cov_part_offset, "cov_part:", cov_part, "squared_nom", squared_norm )
 
+    print("cov_part:", "squared_nom", cov_part, squared_norm)
+
     return (cov_part + squared_norm).real #Just ignoring the imaginary part
 
 if __name__ == "__main__":
@@ -139,7 +141,7 @@ if __name__ == "__main__":
         description='Score a directory of images with the FID score.')
     parser.add_argument('--model', type=str, default="svhn_classifier.pt",
                         help='Path to feature extraction model.')
-    parser.add_argument('directory', type=str, default="samples",
+    parser.add_argument('--directory', type=str, default="samples",
                         help='Path to image directory')
     args = parser.parse_args()
 
@@ -152,7 +154,6 @@ if __name__ == "__main__":
         quit = True
     if quit:
         exit()
-    print("Test")
     classifier = torch.load(args.model, map_location='cpu')
     classifier.eval()
     sample_loader = get_sample_loader(args.directory,

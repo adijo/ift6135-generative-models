@@ -46,7 +46,6 @@ def generate_pictures():
         for j in range(64):
             torchvision.utils.save_image(fake_pictures[j].detach().cpu(), args.out_dir + '/wgan_gp'+str(i*64 + j)+'.png', normalize=True)
 
-    
 
 if __name__ == "__main__":
     generate_pictures()
